@@ -25,32 +25,34 @@ namespace AdminPanel.Modules;
 /// </summary>
 internal sealed class AdminCommandModule
 {
+    // Canonical perm form is module:flag (separator ':'; a leading '@' means a ROLE ref, not a perm,
+    // so '@adminpanel/open' never matched a root '*'). Action verbs reuse AdminCommands' admin:<verb>.
     private const string ModuleId        = "AdminPanel";
-    private const string PermOpen        = "@adminpanel/open";
-    private const string PermBan         = "@admin/ban";
-    private const string PermKick        = "@admin/kick";
-    private const string PermMute        = "@admin/mute";
-    private const string PermGag         = "@admin/gag";
-    private const string PermSilence     = "@admin/silence";
-    private const string PermSlay        = "@admin/slay";
-    private const string PermSlap        = "@admin/slap";
-    private const string PermMap         = "@admin/map";
+    private const string PermOpen        = "adminpanel:open";
+    private const string PermBan         = "admin:ban";
+    private const string PermKick        = "admin:kick";
+    private const string PermMute        = "admin:mute";
+    private const string PermGag         = "admin:gag";
+    private const string PermSilence     = "admin:silence";
+    private const string PermSlay        = "admin:slay";
+    private const string PermSlap        = "admin:slap";
+    private const string PermMap         = "admin:map";
 
     // Additional native built-in admin operations (mirror the AdminCommands verb set).
-    private const string PermGod         = "@admin/god";
-    private const string PermHp          = "@admin/hp";
-    private const string PermRespawn     = "@admin/respawn";
-    private const string PermNoclip      = "@admin/noclip";
-    private const string PermFreeze      = "@admin/freeze";
-    private const string PermSpeed       = "@admin/speed";
-    private const string PermGravity     = "@admin/gravity";
-    private const string PermTeam        = "@admin/team";
-    private const string PermRename      = "@admin/rename";
-    private const string PermMoney       = "@admin/money";
-    private const string PermBring       = "@admin/bring";
-    private const string PermGoto        = "@admin/goto";
-    private const string PermStrip       = "@admin/strip";
-    private const string PermGive        = "@admin/give";
+    private const string PermGod         = "admin:god";
+    private const string PermHp          = "admin:hp";
+    private const string PermRespawn     = "admin:respawn";
+    private const string PermNoclip      = "admin:noclip";
+    private const string PermFreeze      = "admin:freeze";
+    private const string PermSpeed       = "admin:speed";
+    private const string PermGravity     = "admin:gravity";
+    private const string PermTeam        = "admin:team";
+    private const string PermRename      = "admin:rename";
+    private const string PermMoney       = "admin:money";
+    private const string PermBring       = "admin:bring";
+    private const string PermGoto        = "admin:goto";
+    private const string PermStrip       = "admin:strip";
+    private const string PermGive        = "admin:give";
 
     // ── Category grouping ──
     // Built-in action categories and the order their rows render in. Any category that
