@@ -1,0 +1,14 @@
+{
+  "Database": {
+    "Host":        "10.1.1.180",
+    "Port":        3306,
+    "Database":    "adminpanel",
+    "User":        "adminpanel",
+    "Password":    "",
+    "MaxPoolSize": 4
+  },
+  "PollIntervalSeconds": 30,
+  "SlapDamage":          10,
+  "Command":             "admin",
+  "ServerTag":           "all"
+}

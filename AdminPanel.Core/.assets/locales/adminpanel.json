@@ -1,0 +1,98 @@
+{
+  "AP_Title_PlayerPicker": {
+    "en-US": "{{orange}}Admin Panel {{grey}}— Select Player"
+  },
+  "AP_Title_ActionMenu": {
+    "en-US": "{{orange}}Actions {{grey}}— {0}"
+  },
+  "AP_Title_DurationMenu": {
+    "en-US": "{{orange}}{0} {{grey}}— {1} {{grey}}— Duration"
+  },
+  "AP_Title_ReasonMenu": {
+    "en-US": "{{orange}}{0} {{grey}}— {1} {{grey}}— Reason"
+  },
+  "AP_Title_MapChange": {
+    "en-US": "{{orange}}Map Change {{grey}}— Select Map"
+  },
+  "AP_Item_Ban": {
+    "en-US": "{{red}}Ban"
+  },
+  "AP_Item_Kick": {
+    "en-US": "{{yellow}}Kick"
+  },
+  "AP_Item_Mute": {
+    "en-US": "{{blue}}Mute"
+  },
+  "AP_Item_Gag": {
+    "en-US": "{{blue}}Gag"
+  },
+  "AP_Item_Slay": {
+    "en-US": "{{red}}Slay"
+  },
+  "AP_Item_Slap": {
+    "en-US": "{{orange}}Slap"
+  },
+  "AP_Item_MapChange": {
+    "en-US": "{{green}}Map Change"
+  },
+  "AP_Duration_1Hour": {
+    "en-US": "1 Hour"
+  },
+  "AP_Duration_1Day": {
+    "en-US": "1 Day"
+  },
+  "AP_Duration_7Days": {
+    "en-US": "7 Days"
+  },
+  "AP_Duration_30Days": {
+    "en-US": "30 Days"
+  },
+  "AP_Duration_Permanent": {
+    "en-US": "Permanent"
+  },
+  "AP_Label_Back": {
+    "en-US": "« Back"
+  },
+  "AP_Label_Exit": {
+    "en-US": "Exit"
+  },
+  "AP_NoPlayers": {
+    "en-US": "(no players online)"
+  },
+  "AP_NoReasons": {
+    "en-US": "(no reasons configured)"
+  },
+  "AP_Err_NoAdminService": {
+    "en-US": "{{red}}[AdminPanel] AdminCommands unavailable."
+  },
+  "AP_Err_NoMenuManager": {
+    "en-US": "{{red}}[AdminPanel] MenuManager unavailable."
+  },
+  "AP_Err_TargetGone": {
+    "en-US": "{{red}}[AdminPanel] Target is no longer connected."
+  },
+  "AP_Err_TargetNoPawn": {
+    "en-US": "{{red}}[AdminPanel] Target has no active pawn."
+  },
+  "AP_Done_Slap": {
+    "en-US": "{{green}}[AdminPanel] Slapped {0} for {1} damage."
+  },
+  "AP_Done_Slay": {
+    "en-US": "{{green}}[AdminPanel] Slayed {0}."
+  },
+  "AP_Done_Kick": {
+    "en-US": "{{green}}[AdminPanel] Kicked {0}: {1}"
+  },
+  "AP_Done_Ban": {
+    "en-US": "{{green}}[AdminPanel] Banned {0} ({1}): {2}"
+  },
+  "AP_Done_Mute": {
+    "en-US": "{{green}}[AdminPanel] Muted {0} ({1}): {2}"
+  },
+  "AP_Done_Gag": {
+    "en-US": "{{green}}[AdminPanel] Gagged {0} ({1}): {2}"
+  },
+  "AP_Done_MapChange": {
+    "en-US": "{{green}}[AdminPanel] Changing map to {0}."
+  }
+}
