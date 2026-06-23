@@ -20,6 +20,13 @@ internal sealed class AdminActionRegistry : IAdminPanelShared
     private readonly Dictionary<string, AdminPanelPlayerAction>   _players = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AdminPanelGlobalAction>   _globals = new(StringComparer.Ordinal);
 
+    // Set after construction (the input module is built alongside this registry). The
+    // Shared RequestInput entry point delegates to it; null until wired (degrades safely).
+    private AdminInputModule? _input;
+
+    /// <summary>Wire the chat-capture input service. Called once during plugin construction.</summary>
+    internal void AttachInput(AdminInputModule input) => _input = input;
+
     public void RegisterPlayerAction(AdminPanelPlayerAction action)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -50,6 +57,23 @@ internal sealed class AdminActionRegistry : IAdminPanelShared
             _players.Remove(actionId);
             _globals.Remove(actionId);
         }
+    }
+
+    public void RequestInput(
+        int                 adminSlot,
+        string              prompt,
+        AdminInputKind      kind,
+        Action<int, object> onResult,
+        long?               min            = null,
+        long?               max            = null,
+        int                 timeoutSeconds = 30,
+        Action<int>?        onCancel       = null)
+    {
+        ArgumentNullException.ThrowIfNull(onResult);
+
+        // Delegates to the chat-capture input service (owns the IClientListener + pending
+        // table). Must be invoked on the game thread (documented on the contract).
+        _input?.RequestInput(adminSlot, prompt, kind, onResult, min, max, timeoutSeconds, onCancel);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

@@ -38,6 +38,7 @@ internal sealed class AdminCommandModule
     private readonly AdminPanelConfig             _config;
     private readonly ReasonSyncModule             _reasons;
     private readonly AdminActionRegistry          _actions;
+    private readonly AdminInputModule             _input;
     private readonly ILogger<AdminCommandModule>  _logger;
 
     private IClientManager.DelegateClientCommand? _fallback;
@@ -48,12 +49,14 @@ internal sealed class AdminCommandModule
         AdminPanelConfig config,
         ReasonSyncModule reasons,
         AdminActionRegistry actions,
+        AdminInputModule input,
         ILogger<AdminCommandModule> logger)
     {
         _bridge  = bridge;
         _config  = config;
         _reasons = reasons;
         _actions = actions;
+        _input   = input;
         _logger  = logger;
     }
 
@@ -284,9 +287,59 @@ internal sealed class AdminCommandModule
             .Item("7 Days",    ctrl => ctrl.Next(c => BuildReasonMenu(c, target, targetName, actionType, actionLabel, dur7d)))
             .Item("30 Days",   ctrl => ctrl.Next(c => BuildReasonMenu(c, target, targetName, actionType, actionLabel, dur30d)))
             .Item("Permanent", ctrl => ctrl.Next(c => BuildReasonMenu(c, target, targetName, actionType, actionLabel, durPerm)))
+            .Item("Custom…",   ctrl =>
+            {
+                // Exit the menu and capture a free-text minute count via chat. 0 = permanent.
+                ctrl.Exit();
+                RequestCustomDuration(admin, target, targetName, actionType, actionLabel);
+            })
             .BackItem("« Back")
             .ExitItem("Exit")
             .Build();
+    }
+
+    /// <summary>
+    /// PROOF (input primitive): prompts the admin for a duration in minutes via chat
+    /// capture, then re-enters the reason flow with that duration. 0 means permanent.
+    /// </summary>
+    private void RequestCustomDuration(
+        IGameClient admin,
+        IGameClient target,
+        string      targetName,
+        string      actionType,
+        string      actionLabel)
+    {
+        var adminSlot  = (int) admin.Slot.AsPrimitive();
+        var targetSlot = (int) target.Slot.AsPrimitive();
+
+        _input.RequestInput(
+            adminSlot,
+            $"Type the {actionLabel.ToLowerInvariant()} duration in minutes (0 = permanent):",
+            AdminInputKind.Integer,
+            (slot, value) =>
+            {
+                var minutes  = (long) value;
+                TimeSpan? dur = minutes <= 0 ? null : TimeSpan.FromMinutes(minutes);
+
+                // Re-resolve live clients on the game thread before re-opening the menu.
+                var liveAdmin  = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) slot);
+                var liveTarget = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) targetSlot);
+
+                if (liveAdmin is not { IsInGame: true } || _bridge.MenuManager is not { } mm)
+                    return;
+
+                if (liveTarget is not { IsInGame: true })
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target is no longer connected.");
+                    return;
+                }
+
+                var menu = BuildReasonMenu(liveAdmin, liveTarget, targetName, actionType, actionLabel, dur);
+                mm.DisplayMenu(liveAdmin, menu);
+            },
+            min: 0,
+            max: 525600, // one year in minutes — sanity cap
+            timeoutSeconds: 30);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -326,9 +379,61 @@ internal sealed class AdminCommandModule
             }
         }
 
+        // PROOF (input primitive): capture a free-text reason via chat, then execute.
+        builder.Item("Custom reason…", ctrl =>
+        {
+            ctrl.Exit();
+            RequestCustomReason(admin, target, targetName, actionType, duration);
+        });
+
         builder.BackItem("« Back");
         builder.ExitItem("Exit");
         return builder.Build();
+    }
+
+    /// <summary>
+    /// PROOF (input primitive): prompts the admin for a free-text reason via chat capture,
+    /// then executes the action with it.
+    /// </summary>
+    private void RequestCustomReason(
+        IGameClient admin,
+        IGameClient target,
+        string      targetName,
+        string      actionType,
+        TimeSpan?   duration)
+    {
+        var adminSlot  = (int) admin.Slot.AsPrimitive();
+        var targetSlot = (int) target.Slot.AsPrimitive();
+
+        _input.RequestInput(
+            adminSlot,
+            "Type the reason:",
+            AdminInputKind.String,
+            (slot, value) =>
+            {
+                var reason = (string) value;
+
+                var liveAdmin  = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) slot);
+                var liveTarget = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) targetSlot);
+
+                if (liveAdmin is not { IsInGame: true })
+                    return;
+
+                if (actionType != "kick" && liveTarget is not { IsInGame: true })
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target is no longer connected.");
+                    return;
+                }
+
+                if (liveTarget is null)
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target is no longer connected.");
+                    return;
+                }
+
+                ExecuteAction(liveAdmin, liveTarget, targetName, actionType, duration, reason);
+            },
+            timeoutSeconds: 30);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

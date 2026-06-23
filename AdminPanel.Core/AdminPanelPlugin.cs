@@ -26,6 +26,7 @@ public sealed class AdminPanelPlugin : IModSharpModule
     private readonly AdminPanelDatabase        _db;
     private readonly ReasonSyncModule          _reasonSync;
     private readonly AdminActionRegistry       _actionRegistry;
+    private readonly AdminInputModule          _input;
     private readonly AdminCommandModule        _commands;
 
     public AdminPanelPlugin(
@@ -50,11 +51,19 @@ public sealed class AdminPanelPlugin : IModSharpModule
 
         _actionRegistry = new AdminActionRegistry();
 
+        _input = new AdminInputModule(
+            _bridge,
+            loggerFactory.CreateLogger<AdminInputModule>());
+
+        // Route the public Shared RequestInput through the input service.
+        _actionRegistry.AttachInput(_input);
+
         _commands = new AdminCommandModule(
             _bridge,
             _config,
             _reasonSync,
             _actionRegistry,
+            _input,
             loggerFactory.CreateLogger<AdminCommandModule>());
     }
 
@@ -79,6 +88,7 @@ public sealed class AdminPanelPlugin : IModSharpModule
     {
         _bridge.ResolveModules();
         _reasonSync.Start();
+        _input.Start();
         _commands.Start();
 
         _logger.LogInformation(
@@ -92,6 +102,7 @@ public sealed class AdminPanelPlugin : IModSharpModule
     public void Shutdown()
     {
         _commands.Stop();
+        _input.Stop();
         _reasonSync.Stop();
         _db.Dispose();
     }

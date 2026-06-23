@@ -34,6 +34,53 @@ public interface IAdminPanelShared
 
     /// <summary>Remove a previously registered player- or global-action by id.</summary>
     void Unregister(string actionId);
+
+    /// <summary>
+    /// Request free-text input from an admin via chat capture. Prints <paramref name="prompt"/>
+    /// to the admin and intercepts their next chat message instead of broadcasting it. The
+    /// captured line is parsed per <paramref name="kind"/> and validated:
+    /// <list type="bullet">
+    ///   <item><see cref="AdminInputKind.Integer"/> — parsed with <c>long.TryParse</c>; if
+    ///   <paramref name="min"/>/<paramref name="max"/> are set the value is range-checked.</item>
+    ///   <item><see cref="AdminInputKind.String"/> — trimmed and length-capped.</item>
+    /// </list>
+    /// On a valid value <paramref name="onResult"/> fires on the game thread with the acting
+    /// admin slot and the parsed value (boxed: <c>long</c> for Integer, <c>string</c> for String).
+    /// Typing a cancel keyword (<c>cancel</c>/<c>abort</c>/<c>!cancel</c>) or letting the request
+    /// time out aborts and invokes <paramref name="onCancel"/> (if supplied) on the game thread.
+    /// Re-requesting input for the same admin replaces any pending request.
+    /// <para>Must be called on the game thread.</para>
+    /// </summary>
+    /// <param name="adminSlot">Slot of the admin to prompt.</param>
+    /// <param name="prompt">Prompt text printed to the admin's chat.</param>
+    /// <param name="kind">How to parse the captured chat line.</param>
+    /// <param name="onResult">
+    /// Fired on the game thread with (adminSlot, value). <c>value</c> is a <c>long</c> for
+    /// <see cref="AdminInputKind.Integer"/> and a <c>string</c> for <see cref="AdminInputKind.String"/>.
+    /// </param>
+    /// <param name="min">Optional inclusive minimum for <see cref="AdminInputKind.Integer"/>.</param>
+    /// <param name="max">Optional inclusive maximum for <see cref="AdminInputKind.Integer"/>.</param>
+    /// <param name="timeoutSeconds">Seconds before the pending request auto-cancels.</param>
+    /// <param name="onCancel">Fired on the game thread (with the admin slot) on cancel/timeout.</param>
+    void RequestInput(
+        int                   adminSlot,
+        string                prompt,
+        AdminInputKind        kind,
+        Action<int, object>   onResult,
+        long?                 min            = null,
+        long?                 max            = null,
+        int                   timeoutSeconds = 30,
+        Action<int>?          onCancel       = null);
+}
+
+/// <summary>Parse mode for a chat-captured admin input request.</summary>
+public enum AdminInputKind
+{
+    /// <summary>Whole number; result boxed as <c>long</c>, optionally range-checked.</summary>
+    Integer,
+
+    /// <summary>Free text; result boxed as <c>string</c> (trimmed, length-capped).</summary>
+    String,
 }
 
 /// <summary>
