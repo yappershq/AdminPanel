@@ -12,6 +12,11 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <Version>1.0.0</Version>
+    <!-- Copy NuGet runtime deps (SqlSugar, MySqlConnector, transitive) into each module's output
+         so its ALC can load them. ModSharp.Sharp.* refs use ExcludeAssets="runtime" (framework-
+         provided) and are NOT copied. Without this, AdminPanel ships only AdminPanel.dll and
+         crashes with FileNotFound 'SqlSugar' at runtime. (Matches Mmo.Core.) -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <PropertyGroup>
