@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using AdminPanel.Configuration;
 using AdminPanel.Database;
 using AdminPanel.Shared;
@@ -50,6 +51,24 @@ internal sealed class AdminCommandModule
     private const string PermGoto        = "@admin/goto";
     private const string PermStrip       = "@admin/strip";
     private const string PermGive        = "@admin/give";
+
+    // ── Category grouping ──
+    // Built-in action categories and the order their rows render in. Any category that
+    // appears in the merged data but is missing here sorts alphabetically after these.
+    private const string CatPunish   = "Punish";
+    private const string CatPlayer   = "Player";
+    private const string CatTeleport = "Teleport";
+    private const string CatServer   = "Server";
+    private const string CatFun      = "Fun";
+
+    /// <summary>Default bucket for externally-registered actions with no Category set.</summary>
+    private const string DefaultExternalCategory = "Plugins";
+
+    private static readonly string[] PlayerCategoryOrder =
+        [CatPunish, CatPlayer, CatTeleport, CatServer, CatFun, DefaultExternalCategory];
+
+    private static readonly string[] GlobalCategoryOrder =
+        [CatServer, CatFun, DefaultExternalCategory];
 
     private readonly InterfaceBridge              _bridge;
     private readonly AdminPanelConfig             _config;
@@ -148,31 +167,60 @@ internal sealed class AdminCommandModule
 
         var builder = Menu.Create().Title("Admin Panel");
 
-        // Built-in: player management flow.
+        // Built-in: player management flow stays as the first top-level entry.
         var capturedAdmin = admin;
         builder.Item("Manage Players", ctrl => ctrl.Next(_ => BuildPlayerPicker(capturedAdmin)));
 
-        // Registered global actions (perm-gated against the acting admin).
+        // Registered global actions, grouped into category submenus (perm-gated).
         var adminObj = _bridge.AdminManager?.GetAdmin(admin.SteamId);
         bool HasPerm(string? perm) =>
             perm is null || _bridge.AdminManager is null || (adminObj?.HasPermission(perm) ?? false);
 
-        var adminSlot = (int) admin.Slot.AsPrimitive();
+        var buckets = new Dictionary<string, List<MenuEntry>>(StringComparer.Ordinal);
         foreach (var action in _actions.GetGlobalActions())
         {
-            if (!HasPerm(action.Permission))
-                continue;
+            bool allowed   = HasPerm(action.Permission);
+            var  category  = action.Category is { Length: > 0 } c ? c : DefaultExternalCategory;
+            var  captured  = action;
 
-            var captured = action;
-            builder.Item(captured.Label, ctrl =>
+            AddEntry(buckets, category, action.SortOrder, captured.Label, allowed, ctrl =>
             {
                 ctrl.Exit();
                 InvokeGlobalAction(capturedAdmin, captured);
             });
         }
 
+        // One row per non-empty category (hidden when the admin lacks perms for every item).
+        foreach (var category in OrderCategories(buckets.Keys, GlobalCategoryOrder))
+        {
+            var entries = buckets[category];
+            if (!entries.Exists(e => e.Allowed))
+                continue;
+
+            var capturedCategory = category;
+            var capturedEntries  = entries;
+            builder.Item(category, ctrl =>
+                ctrl.Next(_ => BuildGlobalCategoryMenu(capturedCategory, capturedEntries)));
+        }
+
         builder.ExitItem("Exit");
         mm.DisplayMenu(admin, builder.Build());
+    }
+
+    /// <summary>Leaf menu listing one category's global actions (sorted, perm-gated).</summary>
+    private Menu BuildGlobalCategoryMenu(string category, List<MenuEntry> entries)
+    {
+        var builder = Menu.Create().Title(category);
+
+        foreach (var entry in entries.OrderBy(e => e.SortOrder)
+                                     .ThenBy(e => e.Label, StringComparer.OrdinalIgnoreCase))
+        {
+            AddActionItem(builder, entry.Label, string.Empty, entry.Allowed, entry.Action);
+        }
+
+        builder.BackItem("« Back");
+        builder.ExitItem("Exit");
+        return builder.Build();
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -221,149 +269,140 @@ internal sealed class AdminCommandModule
         bool HasPerm(string perm) =>
             _bridge.AdminManager is null || (adminObj?.HasPermission(perm) ?? false);
 
-        var builder = Menu.Create().Title($"Actions — {targetName}");
+        // Build the per-category buckets, merging built-ins with externally-registered actions.
+        var buckets = new Dictionary<string, List<MenuEntry>>(StringComparer.Ordinal);
 
-        AddActionItem(builder, "Ban",        PermBan,  HasPerm(PermBan),  ctrl =>
+        void Add(string category, string label, string perm, int sortOrder, Action<IMenuController> action)
+            => AddEntry(buckets, category, sortOrder, label, HasPerm(perm), action);
+
+        // ── Punish ──
+        Add(CatPunish, "Ban",     PermBan,     0, ctrl =>
             ctrl.Next(c => BuildDurationMenu(c, target, targetName, "ban", "Ban")));
-
-        AddActionItem(builder, "Kick",       PermKick, HasPerm(PermKick), ctrl =>
+        Add(CatPunish, "Kick",    PermKick,    1, ctrl =>
             ctrl.Next(c => BuildReasonMenu(c, target, targetName, "kick", "Kick", null)));
-
-        AddActionItem(builder, "Mute",       PermMute, HasPerm(PermMute), ctrl =>
+        Add(CatPunish, "Mute",    PermMute,    2, ctrl =>
             ctrl.Next(c => BuildDurationMenu(c, target, targetName, "mute", "Mute")));
-
-        AddActionItem(builder, "Gag",        PermGag,  HasPerm(PermGag),  ctrl =>
+        Add(CatPunish, "Gag",     PermGag,     3, ctrl =>
             ctrl.Next(c => BuildDurationMenu(c, target, targetName, "gag", "Gag")));
-
-        AddActionItem(builder, "Slay",       PermSlay, HasPerm(PermSlay), ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteSlay(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Slap",       PermSlap, HasPerm(PermSlap), ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteSlap(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Map Change", PermMap,  HasPerm(PermMap),  ctrl =>
-            ctrl.Next(c => BuildMapMenu(c)));
-
-        // ── Additional native built-in operations (mirror the AdminCommands verb set) ──
-
-        AddActionItem(builder, "Silence",    PermSilence, HasPerm(PermSilence), ctrl =>
+        Add(CatPunish, "Silence", PermSilence, 4, ctrl =>
             ctrl.Next(c => BuildDurationMenu(c, target, targetName, "silence", "Silence")));
 
-        AddActionItem(builder, "God Mode",   PermGod,  HasPerm(PermGod),  ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteGod(admin, target, targetName);
-        });
+        // ── Player ──
+        Add(CatPlayer, "Slay",          PermSlay,    0, ctrl => { ctrl.Exit(); ExecuteSlay(admin, target, targetName); });
+        Add(CatPlayer, "Slap",          PermSlap,    1, ctrl => { ctrl.Exit(); ExecuteSlap(admin, target, targetName); });
+        Add(CatPlayer, "God Mode",      PermGod,     2, ctrl => { ctrl.Exit(); ExecuteGod(admin, target, targetName); });
+        Add(CatPlayer, "Set HP",        PermHp,      3, ctrl => { ctrl.Exit(); RequestHealth(admin, target, targetName); });
+        Add(CatPlayer, "Respawn",       PermRespawn, 4, ctrl => { ctrl.Exit(); ExecuteRespawn(admin, target, targetName); });
+        Add(CatPlayer, "Noclip",        PermNoclip,  5, ctrl => { ctrl.Exit(); ExecuteNoclip(admin, target, targetName); });
+        Add(CatPlayer, "Freeze",        PermFreeze,  6, ctrl => { ctrl.Exit(); ExecuteFreeze(admin, target, targetName, true); });
+        Add(CatPlayer, "Unfreeze",      PermFreeze,  7, ctrl => { ctrl.Exit(); ExecuteFreeze(admin, target, targetName, false); });
+        Add(CatPlayer, "Speed",         PermSpeed,   8, ctrl => { ctrl.Exit(); RequestSpeed(admin, target, targetName); });
+        Add(CatPlayer, "Gravity",       PermGravity, 9, ctrl => { ctrl.Exit(); RequestGravity(admin, target, targetName); });
+        Add(CatPlayer, "Team",          PermTeam,   10, ctrl => ctrl.Next(c => BuildTeamMenu(c, target, targetName)));
+        Add(CatPlayer, "Rename",        PermRename, 11, ctrl => { ctrl.Exit(); RequestRename(admin, target, targetName); });
+        Add(CatPlayer, "Set Money",     PermMoney,  12, ctrl => { ctrl.Exit(); RequestMoney(admin, target, targetName); });
+        Add(CatPlayer, "Strip Weapons", PermStrip,  13, ctrl => { ctrl.Exit(); ExecuteStrip(admin, target, targetName); });
+        Add(CatPlayer, "Give Item",     PermGive,   14, ctrl => { ctrl.Exit(); RequestGive(admin, target, targetName); });
 
-        AddActionItem(builder, "Set HP",     PermHp,   HasPerm(PermHp),   ctrl =>
-        {
-            ctrl.Exit();
-            RequestHealth(admin, target, targetName);
-        });
+        // ── Teleport ──
+        Add(CatTeleport, "Bring", PermBring, 0, ctrl => { ctrl.Exit(); ExecuteBring(admin, target, targetName); });
+        Add(CatTeleport, "Goto",  PermGoto,  1, ctrl => { ctrl.Exit(); ExecuteGoto(admin, target, targetName); });
 
-        AddActionItem(builder, "Respawn",    PermRespawn, HasPerm(PermRespawn), ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteRespawn(admin, target, targetName);
-        });
+        // ── Server ──
+        Add(CatServer, "Map Change", PermMap, 0, ctrl => ctrl.Next(c => BuildMapMenu(c)));
 
-        AddActionItem(builder, "Noclip",     PermNoclip, HasPerm(PermNoclip), ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteNoclip(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Freeze",     PermFreeze, HasPerm(PermFreeze), ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteFreeze(admin, target, targetName, true);
-        });
-
-        AddActionItem(builder, "Unfreeze",   PermFreeze, HasPerm(PermFreeze), ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteFreeze(admin, target, targetName, false);
-        });
-
-        AddActionItem(builder, "Speed",      PermSpeed, HasPerm(PermSpeed), ctrl =>
-        {
-            ctrl.Exit();
-            RequestSpeed(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Gravity",    PermGravity, HasPerm(PermGravity), ctrl =>
-        {
-            ctrl.Exit();
-            RequestGravity(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Team",       PermTeam, HasPerm(PermTeam), ctrl =>
-            ctrl.Next(c => BuildTeamMenu(c, target, targetName)));
-
-        AddActionItem(builder, "Rename",     PermRename, HasPerm(PermRename), ctrl =>
-        {
-            ctrl.Exit();
-            RequestRename(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Set Money",  PermMoney, HasPerm(PermMoney), ctrl =>
-        {
-            ctrl.Exit();
-            RequestMoney(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Bring",      PermBring, HasPerm(PermBring), ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteBring(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Goto",       PermGoto, HasPerm(PermGoto), ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteGoto(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Strip Weapons", PermStrip, HasPerm(PermStrip), ctrl =>
-        {
-            ctrl.Exit();
-            ExecuteStrip(admin, target, targetName);
-        });
-
-        AddActionItem(builder, "Give Item",  PermGive, HasPerm(PermGive), ctrl =>
-        {
-            ctrl.Exit();
-            RequestGive(admin, target, targetName);
-        });
-
-        // Append externally-registered player-actions (perm-gated, ordered by registry).
+        // Merge externally-registered player-actions (perm-gated, category-bucketed).
         // Null permission → visible to anyone who can open the panel.
         var adminSlot = (int) admin.Slot.AsPrimitive();
         foreach (var action in _actions.GetPlayerActions(adminSlot))
         {
-            bool allowed = action.Permission is null || HasPerm(action.Permission);
-            var label    = action.ResolveLabel(adminSlot);
+            bool allowed  = action.Permission is null || HasPerm(action.Permission);
+            var  label    = action.ResolveLabel(adminSlot);
+            var  category = action.Category is { Length: > 0 } c ? c : DefaultExternalCategory;
 
             var capturedAction = action;
             var capturedAdmin  = admin;
             var capturedTarget = target;
-            AddActionItem(builder, label, action.Permission ?? string.Empty, allowed, ctrl =>
+            AddEntry(buckets, category, action.SortOrder, label, allowed, ctrl =>
             {
                 ctrl.Exit();
                 InvokePlayerAction(capturedAdmin, capturedTarget, capturedAction);
             });
         }
 
+        // Top-level category list — one row per non-empty (admin-permitted) category.
+        var builder = Menu.Create().Title($"Actions — {targetName}");
+
+        foreach (var category in OrderCategories(buckets.Keys, PlayerCategoryOrder))
+        {
+            var entries = buckets[category];
+            if (!entries.Exists(e => e.Allowed))
+                continue;
+
+            var capturedCategory = category;
+            var capturedEntries  = entries;
+            var capturedName     = targetName;
+            builder.Item(category, ctrl =>
+                ctrl.Next(_ => BuildCategoryActionMenu(capturedCategory, capturedName, capturedEntries)));
+        }
+
         builder.BackItem("« Back");
         builder.ExitItem("Exit");
 
         return builder.Build();
+    }
+
+    /// <summary>Leaf menu listing one category's player actions (sorted, perm-gated).</summary>
+    private Menu BuildCategoryActionMenu(string category, string targetName, List<MenuEntry> entries)
+    {
+        var builder = Menu.Create().Title($"{category} — {targetName}");
+
+        foreach (var entry in entries.OrderBy(e => e.SortOrder)
+                                     .ThenBy(e => e.Label, StringComparer.OrdinalIgnoreCase))
+        {
+            AddActionItem(builder, entry.Label, string.Empty, entry.Allowed, entry.Action);
+        }
+
+        builder.BackItem("« Back");
+        builder.ExitItem("Exit");
+        return builder.Build();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Category grouping helpers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>A single action entry inside a category bucket.</summary>
+    private sealed record MenuEntry(int SortOrder, string Label, bool Allowed, Action<IMenuController> Action);
+
+    /// <summary>Append an entry to its category bucket, creating the bucket on first use.</summary>
+    private static void AddEntry(
+        Dictionary<string, List<MenuEntry>> buckets,
+        string category,
+        int sortOrder,
+        string label,
+        bool allowed,
+        Action<IMenuController> action)
+    {
+        if (!buckets.TryGetValue(category, out var list))
+            buckets[category] = list = new List<MenuEntry>();
+
+        list.Add(new MenuEntry(sortOrder, label, allowed, action));
+    }
+
+    /// <summary>
+    /// Order categories: known ones first in the supplied order, then any extras alphabetically.
+    /// </summary>
+    private static IEnumerable<string> OrderCategories(IEnumerable<string> present, string[] order)
+    {
+        var set = new HashSet<string>(present, StringComparer.Ordinal);
+
+        foreach (var c in order)
+            if (set.Remove(c))
+                yield return c;
+
+        foreach (var c in set.OrderBy(c => c, StringComparer.OrdinalIgnoreCase))
+            yield return c;
     }
 
     private static void AddActionItem(

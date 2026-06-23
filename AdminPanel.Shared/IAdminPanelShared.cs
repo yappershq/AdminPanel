@@ -113,6 +113,14 @@ public sealed class AdminPanelPlayerAction
     public int SortOrder { get; init; }
 
     /// <summary>
+    /// Optional category used to group this action in the menu. When null/empty, the action
+    /// falls into the default external category ("Plugins"). Built-in categories an external
+    /// action may opt into include <c>"Punish"</c>, <c>"Player"</c>, <c>"Teleport"</c>,
+    /// <c>"Server"</c>, and <c>"Fun"</c>; any other value creates a new category bucket.
+    /// </summary>
+    public string? Category { get; init; }
+
+    /// <summary>
     /// Invoked on the game thread when the action is selected.
     /// Arguments: acting admin slot, target player slot. Both are validated in-game
     /// by AdminPanel before this fires.
@@ -146,6 +154,14 @@ public sealed class AdminPanelGlobalAction
 
     /// <summary>Sort order within the global-action block (ascending, then by label).</summary>
     public int SortOrder { get; init; }
+
+    /// <summary>
+    /// Optional category used to group this action in the root menu. When null/empty, the
+    /// action falls into the default external category ("Plugins"). Built-in categories an
+    /// external action may opt into include <c>"Server"</c> and <c>"Fun"</c>; any other value
+    /// creates a new category bucket.
+    /// </summary>
+    public string? Category { get; init; }
 
     /// <summary>
     /// Invoked on the game thread when the action is selected.
