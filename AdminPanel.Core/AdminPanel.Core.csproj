@@ -9,4 +9,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(APRoot)AdminPanel.Shared\AdminPanel.Shared.csproj" Private="false" />
+  </ItemGroup>
 </Project>

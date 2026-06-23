@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using AdminPanel.Configuration;
 using AdminPanel.Database;
+using AdminPanel.Shared;
 using Microsoft.Extensions.Logging;
 using Sharp.Modules.AdminCommands.Shared;
 using Sharp.Modules.AdminManager.Shared;
@@ -12,6 +13,7 @@ using Sharp.Shared.Enums;
 using Sharp.Shared.Managers;
 using Sharp.Shared.Objects;
 using Sharp.Shared.Types;
+using Sharp.Shared.Units;
 
 namespace AdminPanel.Modules;
 
@@ -35,6 +37,7 @@ internal sealed class AdminCommandModule
     private readonly InterfaceBridge              _bridge;
     private readonly AdminPanelConfig             _config;
     private readonly ReasonSyncModule             _reasons;
+    private readonly AdminActionRegistry          _actions;
     private readonly ILogger<AdminCommandModule>  _logger;
 
     private IClientManager.DelegateClientCommand? _fallback;
@@ -44,11 +47,13 @@ internal sealed class AdminCommandModule
         InterfaceBridge bridge,
         AdminPanelConfig config,
         ReasonSyncModule reasons,
+        AdminActionRegistry actions,
         ILogger<AdminCommandModule> logger)
     {
         _bridge  = bridge;
         _config  = config;
         _reasons = reasons;
+        _actions = actions;
         _logger  = logger;
     }
 
@@ -103,17 +108,52 @@ internal sealed class AdminCommandModule
         if (invoker is null || invoker.IsFakeClient)
             return;
 
-        ShowPlayerPicker(invoker);
+        ShowRootMenu(invoker);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 0. Root menu (player management + registered global actions)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private void ShowRootMenu(IGameClient admin)
+    {
+        if (_bridge.MenuManager is not { } mm) return;
+
+        var builder = Menu.Create().Title("Admin Panel");
+
+        // Built-in: player management flow.
+        var capturedAdmin = admin;
+        builder.Item("Manage Players", ctrl => ctrl.Next(_ => BuildPlayerPicker(capturedAdmin)));
+
+        // Registered global actions (perm-gated against the acting admin).
+        var adminObj = _bridge.AdminManager?.GetAdmin(admin.SteamId);
+        bool HasPerm(string? perm) =>
+            perm is null || _bridge.AdminManager is null || (adminObj?.HasPermission(perm) ?? false);
+
+        var adminSlot = (int) admin.Slot.AsPrimitive();
+        foreach (var action in _actions.GetGlobalActions())
+        {
+            if (!HasPerm(action.Permission))
+                continue;
+
+            var captured = action;
+            builder.Item(captured.Label, ctrl =>
+            {
+                ctrl.Exit();
+                InvokeGlobalAction(capturedAdmin, captured);
+            });
+        }
+
+        builder.ExitItem("Exit");
+        mm.DisplayMenu(admin, builder.Build());
     }
 
     // ──────────────────────────────────────────────────────────────────────────
     // 1. Player picker
     // ──────────────────────────────────────────────────────────────────────────
 
-    private void ShowPlayerPicker(IGameClient admin)
+    private Menu BuildPlayerPicker(IGameClient admin)
     {
-        if (_bridge.MenuManager is not { } mm) return;
-
         var builder = Menu.Create().Title("Admin Panel — Select Player");
 
         var players = _bridge.ClientManager.GetGameClients();
@@ -138,8 +178,9 @@ internal sealed class AdminCommandModule
         if (!any)
             builder.Item("(no players online)", _ => { });
 
+        builder.BackItem("« Back");
         builder.ExitItem("Exit");
-        mm.DisplayMenu(admin, builder.Build());
+        return builder.Build();
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -181,6 +222,24 @@ internal sealed class AdminCommandModule
 
         AddActionItem(builder, "Map Change", PermMap,  HasPerm(PermMap),  ctrl =>
             ctrl.Next(c => BuildMapMenu(c)));
+
+        // Append externally-registered player-actions (perm-gated, ordered by registry).
+        // Null permission → visible to anyone who can open the panel.
+        var adminSlot = (int) admin.Slot.AsPrimitive();
+        foreach (var action in _actions.GetPlayerActions(adminSlot))
+        {
+            bool allowed = action.Permission is null || HasPerm(action.Permission);
+            var label    = action.ResolveLabel(adminSlot);
+
+            var capturedAction = action;
+            var capturedAdmin  = admin;
+            var capturedTarget = target;
+            AddActionItem(builder, label, action.Permission ?? string.Empty, allowed, ctrl =>
+            {
+                ctrl.Exit();
+                InvokePlayerAction(capturedAdmin, capturedTarget, capturedAction);
+            });
+        }
 
         builder.BackItem("« Back");
         builder.ExitItem("Exit");
@@ -310,6 +369,63 @@ internal sealed class AdminCommandModule
         builder.BackItem("« Back");
         builder.ExitItem("Exit");
         return builder.Build();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // External action invocation (Shared API)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private void InvokePlayerAction(IGameClient admin, IGameClient target, AdminPanelPlayerAction action)
+    {
+        // Capture slots now; resolve back to live clients on the game thread at fire time
+        // so a disconnect between menu select and execution can't hand the callback a stale
+        // pointer.
+        var adminSlot  = (int) admin.Slot.AsPrimitive();
+        var targetSlot = (int) target.Slot.AsPrimitive();
+
+        _bridge.ModSharp.InvokeFrameAction(() =>
+        {
+            var liveAdmin  = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) adminSlot);
+            var liveTarget = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) targetSlot);
+
+            if (liveAdmin is not { IsInGame: true })
+                return;
+            if (liveTarget is not { IsInGame: true })
+            {
+                liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target is no longer connected.");
+                return;
+            }
+
+            try
+            {
+                action.OnSelected(adminSlot, targetSlot);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "[AdminPanel] External player-action '{Id}' threw", action.Id);
+            }
+        });
+    }
+
+    private void InvokeGlobalAction(IGameClient admin, AdminPanelGlobalAction action)
+    {
+        var adminSlot = (int) admin.Slot.AsPrimitive();
+
+        _bridge.ModSharp.InvokeFrameAction(() =>
+        {
+            var liveAdmin = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) adminSlot);
+            if (liveAdmin is not { IsInGame: true })
+                return;
+
+            try
+            {
+                action.OnSelected(adminSlot);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "[AdminPanel] External global-action '{Id}' threw", action.Id);
+            }
+        });
     }
 
     // ──────────────────────────────────────────────────────────────────────────

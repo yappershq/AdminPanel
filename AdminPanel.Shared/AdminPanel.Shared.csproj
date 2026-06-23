@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Public API for external admin-action modules. Consumers reference this only. -->
+  <!-- Inherits TFM / LangVersion / ModSharp Shared packages from Directory.Build.props. -->
+</Project>

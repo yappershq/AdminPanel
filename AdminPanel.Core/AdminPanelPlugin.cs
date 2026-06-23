@@ -4,6 +4,7 @@ using System.Text.Json;
 using AdminPanel.Configuration;
 using AdminPanel.Database;
 using AdminPanel.Modules;
+using AdminPanel.Shared;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sharp.Shared;
@@ -24,6 +25,7 @@ public sealed class AdminPanelPlugin : IModSharpModule
     private readonly AdminPanelConfig          _config;
     private readonly AdminPanelDatabase        _db;
     private readonly ReasonSyncModule          _reasonSync;
+    private readonly AdminActionRegistry       _actionRegistry;
     private readonly AdminCommandModule        _commands;
 
     public AdminPanelPlugin(
@@ -46,10 +48,13 @@ public sealed class AdminPanelPlugin : IModSharpModule
             _db,
             loggerFactory.CreateLogger<ReasonSyncModule>());
 
+        _actionRegistry = new AdminActionRegistry();
+
         _commands = new AdminCommandModule(
             _bridge,
             _config,
             _reasonSync,
+            _actionRegistry,
             loggerFactory.CreateLogger<AdminCommandModule>());
     }
 
@@ -60,7 +65,15 @@ public sealed class AdminPanelPlugin : IModSharpModule
         return true;
     }
 
-    public void PostInit() { }
+    public void PostInit()
+    {
+        // Publish the public action-registry contract here (PostInit) so consumers can
+        // resolve it in their OnAllModulesLoaded. ModSharp guarantees every plugin's
+        // PostInit finishes before any OnAllModulesLoaded runs, so late registrations
+        // are safe — the menu is rebuilt on each !admin invocation.
+        _bridge.SharpModuleManager.RegisterSharpModuleInterface<IAdminPanelShared>(
+            this, IAdminPanelShared.Identity, _actionRegistry);
+    }
 
     public void OnAllModulesLoaded()
     {

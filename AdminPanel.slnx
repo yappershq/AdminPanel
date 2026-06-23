@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="AdminPanel.Shared/AdminPanel.Shared.csproj" />
   <Project Path="AdminPanel.Core/AdminPanel.Core.csproj" />
 </Solution>
