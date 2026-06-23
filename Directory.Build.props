@@ -18,6 +18,14 @@
     <OutputPath>$(APRoot).build\modules\$(MSBuildProjectName)\</OutputPath>
   </PropertyGroup>
 
+  <!-- .Shared projects must build into .build/shared/ so modsharp-deploy ships them to
+       /game/sharp/shared/. ModSharp loads each module in its own ALC (PreferSharedTypes) and
+       only unifies cross-plugin interface types from the shared dir — a .Shared DLL placed in a
+       module dir can't be loaded/cast by a different plugin. (JB/HexTags/Mmo all use this split.) -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Shared'))">
+    <OutputPath>$(APRoot).build\shared\$(MSBuildProjectName)\</OutputPath>
+  </PropertyGroup>
+
   <ItemGroup>
     <Compile Remove="obj\**" />
     <EmbeddedResource Remove="obj\**" />
