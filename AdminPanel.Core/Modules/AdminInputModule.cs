@@ -138,6 +138,23 @@ internal sealed class AdminInputModule : IClientListener
     // Chat interception (game thread)
     // ──────────────────────────────────────────────────────────────────────────
 
+    // Drop any pending input for a slot when its occupant leaves, so a leaked timer can't
+    // fire a stale callback against a new player who later takes the same slot.
+    void IClientListener.OnClientDisconnected(IGameClient client, NetworkDisconnectionReason reason)
+    {
+        var slot = (int) client.Slot.AsPrimitive();
+        if (slot is < 0 or >= 64)
+            return;
+
+        var pending = _pending[slot];
+        if (pending is null)
+            return;
+
+        _pending[slot] = null;
+        if (_bridge.ModSharp.IsValidTimer(pending.TimeoutTimer))
+            _bridge.ModSharp.StopTimer(pending.TimeoutTimer);
+    }
+
     ECommandAction IClientListener.OnClientSayCommand(
         IGameClient client,
         bool        teamOnly,

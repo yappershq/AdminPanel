@@ -566,7 +566,7 @@ internal sealed class AdminCommandModule
             return;
         }
 
-        if (!target.IsConnected)
+        if (target is not { IsInGame: true })
         {
             admin.Print(HudPrintChannel.Chat, " [AdminPanel] Target is no longer connected.");
             return;
@@ -583,7 +583,7 @@ internal sealed class AdminCommandModule
 
     private void ExecuteKick(IGameClient admin, IGameClient target, string targetName, string reason)
     {
-        if (!target.IsConnected)
+        if (target is not { IsInGame: true })
         {
             admin.Print(HudPrintChannel.Chat, " [AdminPanel] Target is no longer connected.");
             return;
