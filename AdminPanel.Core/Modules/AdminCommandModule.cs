@@ -79,9 +79,6 @@ internal sealed class AdminCommandModule
     private readonly AdminInputModule             _input;
     private readonly ILogger<AdminCommandModule>  _logger;
 
-    private IClientManager.DelegateClientCommand? _fallback;
-    private bool                                  _usedRegistry;
-
     public AdminCommandModule(
         InterfaceBridge bridge,
         AdminPanelConfig config,
@@ -106,45 +103,35 @@ internal sealed class AdminCommandModule
             return;
         }
 
-        if (_bridge.AdminManager is { } am)
+        if (_bridge.AdminManager is not { } am)
         {
-            am.MountAdminManifest(ModuleId, () => new AdminTableManifest(
-                new Dictionary<string, HashSet<string>>
-                {
-                    ["adminpanel"] =
-                    [
-                        PermOpen, PermBan, PermKick, PermMute, PermGag, PermSilence,
-                        PermSlay, PermSlap, PermMap,
-                        PermGod, PermHp, PermRespawn, PermNoclip, PermFreeze, PermSpeed,
-                        PermGravity, PermTeam, PermRename, PermMoney, PermBring, PermGoto,
-                        PermStrip, PermGive,
-                    ]
-                },
-                [],
-                []));
-
-            am.GetCommandRegistry(ModuleId)
-              .RegisterAdminCommand(_config.Command, OnAdminCommand, ImmutableArray.Create(PermOpen));
-
-            _usedRegistry = true;
-            _logger.LogInformation("[AdminPanel] !{Cmd} registered (perm {Perm})", _config.Command, PermOpen);
+            _logger.LogError("[AdminPanel] AdminManager unavailable — !{Cmd} NOT registered (requires AdminManager for permission gating).", _config.Command);
+            return;
         }
-        else
-        {
-            _fallback = (client, cmd) =>
+
+        am.MountAdminManifest(ModuleId, () => new AdminTableManifest(
+            new Dictionary<string, HashSet<string>>
             {
-                OnAdminCommand(client, cmd);
-                return ECommandAction.Handled;
-            };
-            _bridge.ClientManager.InstallCommandCallback(_config.Command, _fallback);
-            _logger.LogWarning("[AdminPanel] AdminManager unavailable — !{Cmd} registered WITHOUT permission check", _config.Command);
-        }
+                ["adminpanel"] =
+                [
+                    PermOpen, PermBan, PermKick, PermMute, PermGag, PermSilence,
+                    PermSlay, PermSlap, PermMap,
+                    PermGod, PermHp, PermRespawn, PermNoclip, PermFreeze, PermSpeed,
+                    PermGravity, PermTeam, PermRename, PermMoney, PermBring, PermGoto,
+                    PermStrip, PermGive,
+                ]
+            },
+            [],
+            []));
+
+        am.GetCommandRegistry(ModuleId)
+          .RegisterAdminCommand(_config.Command, OnAdminCommand, ImmutableArray.Create(PermOpen));
+
+        _logger.LogInformation("[AdminPanel] !{Cmd} registered (perm {Perm})", _config.Command, PermOpen);
     }
 
     public void Stop()
     {
-        if (!_usedRegistry && _fallback is not null)
-            _bridge.ClientManager.RemoveCommandCallback(_config.Command, _fallback);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
