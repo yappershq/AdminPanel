@@ -30,9 +30,26 @@ internal sealed class AdminCommandModule
     private const string PermKick        = "@admin/kick";
     private const string PermMute        = "@admin/mute";
     private const string PermGag         = "@admin/gag";
+    private const string PermSilence     = "@admin/silence";
     private const string PermSlay        = "@admin/slay";
     private const string PermSlap        = "@admin/slap";
     private const string PermMap         = "@admin/map";
+
+    // Additional native built-in admin operations (mirror the AdminCommands verb set).
+    private const string PermGod         = "@admin/god";
+    private const string PermHp          = "@admin/hp";
+    private const string PermRespawn     = "@admin/respawn";
+    private const string PermNoclip      = "@admin/noclip";
+    private const string PermFreeze      = "@admin/freeze";
+    private const string PermSpeed       = "@admin/speed";
+    private const string PermGravity     = "@admin/gravity";
+    private const string PermTeam        = "@admin/team";
+    private const string PermRename      = "@admin/rename";
+    private const string PermMoney       = "@admin/money";
+    private const string PermBring       = "@admin/bring";
+    private const string PermGoto        = "@admin/goto";
+    private const string PermStrip       = "@admin/strip";
+    private const string PermGive        = "@admin/give";
 
     private readonly InterfaceBridge              _bridge;
     private readonly AdminPanelConfig             _config;
@@ -73,7 +90,14 @@ internal sealed class AdminCommandModule
             am.MountAdminManifest(ModuleId, () => new AdminTableManifest(
                 new Dictionary<string, HashSet<string>>
                 {
-                    ["adminpanel"] = [PermOpen, PermBan, PermKick, PermMute, PermGag, PermSlay, PermSlap, PermMap]
+                    ["adminpanel"] =
+                    [
+                        PermOpen, PermBan, PermKick, PermMute, PermGag, PermSilence,
+                        PermSlay, PermSlap, PermMap,
+                        PermGod, PermHp, PermRespawn, PermNoclip, PermFreeze, PermSpeed,
+                        PermGravity, PermTeam, PermRename, PermMoney, PermBring, PermGoto,
+                        PermStrip, PermGive,
+                    ]
                 },
                 [],
                 []));
@@ -225,6 +249,98 @@ internal sealed class AdminCommandModule
 
         AddActionItem(builder, "Map Change", PermMap,  HasPerm(PermMap),  ctrl =>
             ctrl.Next(c => BuildMapMenu(c)));
+
+        // ── Additional native built-in operations (mirror the AdminCommands verb set) ──
+
+        AddActionItem(builder, "Silence",    PermSilence, HasPerm(PermSilence), ctrl =>
+            ctrl.Next(c => BuildDurationMenu(c, target, targetName, "silence", "Silence")));
+
+        AddActionItem(builder, "God Mode",   PermGod,  HasPerm(PermGod),  ctrl =>
+        {
+            ctrl.Exit();
+            ExecuteGod(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Set HP",     PermHp,   HasPerm(PermHp),   ctrl =>
+        {
+            ctrl.Exit();
+            RequestHealth(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Respawn",    PermRespawn, HasPerm(PermRespawn), ctrl =>
+        {
+            ctrl.Exit();
+            ExecuteRespawn(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Noclip",     PermNoclip, HasPerm(PermNoclip), ctrl =>
+        {
+            ctrl.Exit();
+            ExecuteNoclip(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Freeze",     PermFreeze, HasPerm(PermFreeze), ctrl =>
+        {
+            ctrl.Exit();
+            ExecuteFreeze(admin, target, targetName, true);
+        });
+
+        AddActionItem(builder, "Unfreeze",   PermFreeze, HasPerm(PermFreeze), ctrl =>
+        {
+            ctrl.Exit();
+            ExecuteFreeze(admin, target, targetName, false);
+        });
+
+        AddActionItem(builder, "Speed",      PermSpeed, HasPerm(PermSpeed), ctrl =>
+        {
+            ctrl.Exit();
+            RequestSpeed(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Gravity",    PermGravity, HasPerm(PermGravity), ctrl =>
+        {
+            ctrl.Exit();
+            RequestGravity(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Team",       PermTeam, HasPerm(PermTeam), ctrl =>
+            ctrl.Next(c => BuildTeamMenu(c, target, targetName)));
+
+        AddActionItem(builder, "Rename",     PermRename, HasPerm(PermRename), ctrl =>
+        {
+            ctrl.Exit();
+            RequestRename(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Set Money",  PermMoney, HasPerm(PermMoney), ctrl =>
+        {
+            ctrl.Exit();
+            RequestMoney(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Bring",      PermBring, HasPerm(PermBring), ctrl =>
+        {
+            ctrl.Exit();
+            ExecuteBring(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Goto",       PermGoto, HasPerm(PermGoto), ctrl =>
+        {
+            ctrl.Exit();
+            ExecuteGoto(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Strip Weapons", PermStrip, HasPerm(PermStrip), ctrl =>
+        {
+            ctrl.Exit();
+            ExecuteStrip(admin, target, targetName);
+        });
+
+        AddActionItem(builder, "Give Item",  PermGive, HasPerm(PermGive), ctrl =>
+        {
+            ctrl.Exit();
+            RequestGive(admin, target, targetName);
+        });
 
         // Append externally-registered player-actions (perm-gated, ordered by registry).
         // Null permission → visible to anyone who can open the panel.
@@ -477,6 +593,34 @@ internal sealed class AdminCommandModule
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // 6. Team submenu
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private Menu BuildTeamMenu(IGameClient admin, IGameClient target, string targetName)
+    {
+        return Menu.Create()
+            .Title($"Team — {targetName}")
+            .Item("Counter-Terrorist", ctrl =>
+            {
+                ctrl.Exit();
+                ExecuteTeam(admin, target, targetName, CStrikeTeam.CT);
+            })
+            .Item("Terrorist", ctrl =>
+            {
+                ctrl.Exit();
+                ExecuteTeam(admin, target, targetName, CStrikeTeam.TE);
+            })
+            .Item("Spectator", ctrl =>
+            {
+                ctrl.Exit();
+                ExecuteTeam(admin, target, targetName, CStrikeTeam.Spectator);
+            })
+            .BackItem("« Back")
+            .ExitItem("Exit")
+            .Build();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // External action invocation (Shared API)
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -572,7 +716,10 @@ internal sealed class AdminCommandModule
             return;
         }
 
-        svc.Apply(admin, target, opType, duration, reason);
+        if (actionType == "silence")
+            svc.Silence.Silence(admin, target, duration, reason);
+        else
+            svc.Apply(admin, target, opType, duration, reason);
 
         var durStr = FormatDuration(duration);
         admin.Print(HudPrintChannel.Chat,
@@ -608,6 +755,8 @@ internal sealed class AdminCommandModule
             return;
         }
 
+        // Defeat godmode before slaying, matching AdminCommands' own slay handler.
+        pawn.AllowTakesDamage = true;
         pawn.Slay();
 
         admin.Print(HudPrintChannel.Chat, $" [AdminPanel] Slayed {targetName}.");
@@ -630,6 +779,9 @@ internal sealed class AdminCommandModule
         dmg.DamageType = DamageFlagBits.Generic;
         pawn.DispatchTraceAttack(in dmg);
 
+        // Launch impulse (cosmetic), matching AdminCommands' slap behaviour.
+        pawn.ApplyAbsVelocityImpulse(new Vector(0f, 0f, 250f));
+
         admin.Print(HudPrintChannel.Chat,
             $" [AdminPanel] Slapped {targetName} for {_config.SlapDamage} damage.");
         _logger.LogInformation("[AdminPanel] {Admin} -> Slap {Target} ({Steam}) dmg={Dmg}",
@@ -645,6 +797,381 @@ internal sealed class AdminCommandModule
         {
             _bridge.ModSharp.ChangeLevel(map);
         });
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Native built-in operations (pawn/controller ops — never raw Health -=)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private void ExecuteGod(IGameClient admin, IGameClient target, string targetName)
+    {
+        var pawn = target.GetPlayerController()?.GetPlayerPawn();
+        if (pawn is null)
+        {
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no active pawn.");
+            return;
+        }
+
+        // Toggle: AllowTakesDamage == true means god is OFF; flip it.
+        var godOn = !pawn.AllowTakesDamage;
+        pawn.AllowTakesDamage = !godOn;
+
+        admin.Print(HudPrintChannel.Chat,
+            $" [AdminPanel] God mode {(godOn ? "enabled" : "disabled")} for {targetName}.");
+        _logger.LogInformation("[AdminPanel] {Admin} -> God({On}) {Target} ({Steam})",
+            (ulong) admin.SteamId, godOn, targetName, (ulong) target.SteamId);
+    }
+
+    private void RequestHealth(IGameClient admin, IGameClient target, string targetName)
+    {
+        var adminSlot  = (int) admin.Slot.AsPrimitive();
+        var targetSlot = (int) target.Slot.AsPrimitive();
+
+        _input.RequestInput(
+            adminSlot,
+            "Type the health value to set (>0):",
+            AdminInputKind.Integer,
+            (slot, value) =>
+            {
+                var hp = (int) Math.Clamp((long) value, 1, 1_000_000);
+                if (!TryResolve(slot, targetSlot, out var liveAdmin, out var liveTarget))
+                    return;
+
+                var pawn = liveTarget.GetPlayerController()?.GetPlayerPawn();
+                if (pawn is null)
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no active pawn.");
+                    return;
+                }
+
+                if (hp > pawn.MaxHealth)
+                    pawn.MaxHealth = hp;
+                pawn.Health = hp;
+
+                liveAdmin.Print(HudPrintChannel.Chat, $" [AdminPanel] Set {targetName}'s health to {hp}.");
+                _logger.LogInformation("[AdminPanel] {Admin} -> SetHP {Target} ({Steam}) hp={Hp}",
+                    (ulong) liveAdmin.SteamId, targetName, (ulong) liveTarget.SteamId, hp);
+            },
+            min: 1,
+            max: 1_000_000,
+            timeoutSeconds: 30);
+    }
+
+    private void ExecuteRespawn(IGameClient admin, IGameClient target, string targetName)
+    {
+        var controller = target.GetPlayerController();
+        if (controller is null)
+        {
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no controller.");
+            return;
+        }
+
+        controller.Respawn();
+
+        admin.Print(HudPrintChannel.Chat, $" [AdminPanel] Respawned {targetName}.");
+        _logger.LogInformation("[AdminPanel] {Admin} -> Respawn {Target} ({Steam})",
+            (ulong) admin.SteamId, targetName, (ulong) target.SteamId);
+    }
+
+    private void ExecuteNoclip(IGameClient admin, IGameClient target, string targetName)
+    {
+        var pawn = target.GetPlayerController()?.GetPlayerPawn();
+        if (pawn is null)
+        {
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no active pawn.");
+            return;
+        }
+
+        var noclipOn = pawn.MoveType != MoveType.NoClip;
+        pawn.SetMoveType(noclipOn ? MoveType.NoClip : MoveType.Walk);
+
+        admin.Print(HudPrintChannel.Chat,
+            $" [AdminPanel] Noclip {(noclipOn ? "enabled" : "disabled")} for {targetName}.");
+        _logger.LogInformation("[AdminPanel] {Admin} -> Noclip({On}) {Target} ({Steam})",
+            (ulong) admin.SteamId, noclipOn, targetName, (ulong) target.SteamId);
+    }
+
+    private void ExecuteFreeze(IGameClient admin, IGameClient target, string targetName, bool freeze)
+    {
+        var pawn = target.GetPlayerController()?.GetPlayerPawn();
+        if (pawn is null)
+        {
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no active pawn.");
+            return;
+        }
+
+        pawn.SetMoveType(freeze ? MoveType.None : MoveType.Walk);
+
+        admin.Print(HudPrintChannel.Chat,
+            $" [AdminPanel] {(freeze ? "Froze" : "Unfroze")} {targetName}.");
+        _logger.LogInformation("[AdminPanel] {Admin} -> Freeze({Freeze}) {Target} ({Steam})",
+            (ulong) admin.SteamId, freeze, targetName, (ulong) target.SteamId);
+    }
+
+    private void RequestSpeed(IGameClient admin, IGameClient target, string targetName)
+    {
+        var adminSlot  = (int) admin.Slot.AsPrimitive();
+        var targetSlot = (int) target.Slot.AsPrimitive();
+
+        _input.RequestInput(
+            adminSlot,
+            "Type the speed as a percentage (100 = normal, e.g. 200 = 2x):",
+            AdminInputKind.Integer,
+            (slot, value) =>
+            {
+                var pct   = Math.Clamp((long) value, 1, 1000);
+                var speed = pct / 100f;
+                if (!TryResolve(slot, targetSlot, out var liveAdmin, out var liveTarget))
+                    return;
+
+                var controller = liveTarget.GetPlayerController();
+                if (controller is null)
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no controller.");
+                    return;
+                }
+
+                controller.LaggedMovement = speed;
+
+                liveAdmin.Print(HudPrintChannel.Chat, $" [AdminPanel] Set {targetName}'s speed to {pct}%.");
+                _logger.LogInformation("[AdminPanel] {Admin} -> Speed {Target} ({Steam}) speed={Speed}",
+                    (ulong) liveAdmin.SteamId, targetName, (ulong) liveTarget.SteamId, speed);
+            },
+            min: 1,
+            max: 1000,
+            timeoutSeconds: 30);
+    }
+
+    private void RequestGravity(IGameClient admin, IGameClient target, string targetName)
+    {
+        var adminSlot  = (int) admin.Slot.AsPrimitive();
+        var targetSlot = (int) target.Slot.AsPrimitive();
+
+        _input.RequestInput(
+            adminSlot,
+            "Type the gravity as a percentage (100 = normal, e.g. 50 = half):",
+            AdminInputKind.Integer,
+            (slot, value) =>
+            {
+                var pct   = Math.Clamp((long) value, 1, 1000);
+                var scale = pct / 100f;
+                if (!TryResolve(slot, targetSlot, out var liveAdmin, out var liveTarget))
+                    return;
+
+                var pawn = liveTarget.GetPlayerController()?.GetPlayerPawn();
+                if (pawn is null)
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no active pawn.");
+                    return;
+                }
+
+                pawn.SetGravityScale(scale);
+
+                liveAdmin.Print(HudPrintChannel.Chat, $" [AdminPanel] Set {targetName}'s gravity to {pct}%.");
+                _logger.LogInformation("[AdminPanel] {Admin} -> Gravity {Target} ({Steam}) scale={Scale}",
+                    (ulong) liveAdmin.SteamId, targetName, (ulong) liveTarget.SteamId, scale);
+            },
+            min: 1,
+            max: 1000,
+            timeoutSeconds: 30);
+    }
+
+    private void ExecuteTeam(IGameClient admin, IGameClient target, string targetName, CStrikeTeam team)
+    {
+        var controller = target.GetPlayerController();
+        if (controller is null)
+        {
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no controller.");
+            return;
+        }
+
+        // Spectator/unassigned use ChangeTeam; live teams use SwitchTeam (no slay).
+        if (team <= CStrikeTeam.Spectator)
+            controller.ChangeTeam(team);
+        else
+            controller.SwitchTeam(team);
+
+        admin.Print(HudPrintChannel.Chat, $" [AdminPanel] Moved {targetName} to {team}.");
+        _logger.LogInformation("[AdminPanel] {Admin} -> Team {Target} ({Steam}) team={Team}",
+            (ulong) admin.SteamId, targetName, (ulong) target.SteamId, team);
+    }
+
+    private void RequestRename(IGameClient admin, IGameClient target, string targetName)
+    {
+        var adminSlot  = (int) admin.Slot.AsPrimitive();
+        var targetSlot = (int) target.Slot.AsPrimitive();
+
+        _input.RequestInput(
+            adminSlot,
+            "Type the new name:",
+            AdminInputKind.String,
+            (slot, value) =>
+            {
+                var newName = (string) value;
+                if (!TryResolve(slot, targetSlot, out var liveAdmin, out var liveTarget))
+                    return;
+
+                if (liveTarget.GetPlayerController() is { } controller)
+                    controller.PlayerName = newName;
+                liveTarget.SetName(newName);
+
+                liveAdmin.Print(HudPrintChannel.Chat, $" [AdminPanel] Renamed {targetName} to {newName}.");
+                _logger.LogInformation("[AdminPanel] {Admin} -> Rename {Target} ({Steam}) name={Name}",
+                    (ulong) liveAdmin.SteamId, targetName, (ulong) liveTarget.SteamId, newName);
+            },
+            timeoutSeconds: 30);
+    }
+
+    private void RequestMoney(IGameClient admin, IGameClient target, string targetName)
+    {
+        var adminSlot  = (int) admin.Slot.AsPrimitive();
+        var targetSlot = (int) target.Slot.AsPrimitive();
+
+        _input.RequestInput(
+            adminSlot,
+            "Type the money amount to set (0–60000):",
+            AdminInputKind.Integer,
+            (slot, value) =>
+            {
+                var amount = (int) Math.Clamp((long) value, 0, 60000);
+                if (!TryResolve(slot, targetSlot, out var liveAdmin, out var liveTarget))
+                    return;
+
+                if (liveTarget.GetPlayerController()?.GetInGameMoneyService() is not { } money)
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no money service.");
+                    return;
+                }
+
+                money.Account = amount;
+
+                liveAdmin.Print(HudPrintChannel.Chat, $" [AdminPanel] Set {targetName}'s money to {amount}.");
+                _logger.LogInformation("[AdminPanel] {Admin} -> Money {Target} ({Steam}) amount={Amount}",
+                    (ulong) liveAdmin.SteamId, targetName, (ulong) liveTarget.SteamId, amount);
+            },
+            min: 0,
+            max: 60000,
+            timeoutSeconds: 30);
+    }
+
+    private void ExecuteBring(IGameClient admin, IGameClient target, string targetName)
+    {
+        var adminPawn  = admin.GetPlayerController()?.GetPlayerPawn();
+        var targetPawn = target.GetPlayerController()?.GetPlayerPawn();
+        if (adminPawn is null || targetPawn is null)
+        {
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Both admin and target must have an active pawn.");
+            return;
+        }
+
+        targetPawn.Teleport(adminPawn.GetAbsOrigin(), null, new Vector(0f, 0f, 0f));
+
+        admin.Print(HudPrintChannel.Chat, $" [AdminPanel] Brought {targetName} to you.");
+        _logger.LogInformation("[AdminPanel] {Admin} -> Bring {Target} ({Steam})",
+            (ulong) admin.SteamId, targetName, (ulong) target.SteamId);
+    }
+
+    private void ExecuteGoto(IGameClient admin, IGameClient target, string targetName)
+    {
+        var adminPawn  = admin.GetPlayerController()?.GetPlayerPawn();
+        var targetPawn = target.GetPlayerController()?.GetPlayerPawn();
+        if (adminPawn is null || targetPawn is null)
+        {
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Both admin and target must have an active pawn.");
+            return;
+        }
+
+        adminPawn.Teleport(targetPawn.GetAbsOrigin(), null, new Vector(0f, 0f, 0f));
+
+        admin.Print(HudPrintChannel.Chat, $" [AdminPanel] Teleported to {targetName}.");
+        _logger.LogInformation("[AdminPanel] {Admin} -> Goto {Target} ({Steam})",
+            (ulong) admin.SteamId, targetName, (ulong) target.SteamId);
+    }
+
+    private void ExecuteStrip(IGameClient admin, IGameClient target, string targetName)
+    {
+        var pawn = target.GetPlayerController()?.GetPlayerPawn();
+        if (pawn is null)
+        {
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no active pawn.");
+            return;
+        }
+
+        if (!pawn.IsAlive)
+        {
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Target is not alive.");
+            return;
+        }
+
+        pawn.RemoveAllItems(true);
+
+        admin.Print(HudPrintChannel.Chat, $" [AdminPanel] Stripped {targetName}'s weapons.");
+        _logger.LogInformation("[AdminPanel] {Admin} -> Strip {Target} ({Steam})",
+            (ulong) admin.SteamId, targetName, (ulong) target.SteamId);
+    }
+
+    private void RequestGive(IGameClient admin, IGameClient target, string targetName)
+    {
+        var adminSlot  = (int) admin.Slot.AsPrimitive();
+        var targetSlot = (int) target.Slot.AsPrimitive();
+
+        _input.RequestInput(
+            adminSlot,
+            "Type the item to give (e.g. weapon_ak47):",
+            AdminInputKind.String,
+            (slot, value) =>
+            {
+                var itemName = (string) value;
+                if (!TryResolve(slot, targetSlot, out var liveAdmin, out var liveTarget))
+                    return;
+
+                var pawn = liveTarget.GetPlayerController()?.GetPlayerPawn();
+                if (pawn is null)
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target has no active pawn.");
+                    return;
+                }
+
+                if (pawn.GiveNamedItem(itemName) is null)
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat, $" [AdminPanel] Failed to give '{itemName}'.");
+                    return;
+                }
+
+                liveAdmin.Print(HudPrintChannel.Chat, $" [AdminPanel] Gave {itemName} to {targetName}.");
+                _logger.LogInformation("[AdminPanel] {Admin} -> Give {Target} ({Steam}) item={Item}",
+                    (ulong) liveAdmin.SteamId, targetName, (ulong) liveTarget.SteamId, itemName);
+            },
+            timeoutSeconds: 30);
+    }
+
+    /// <summary>
+    /// Re-resolve admin + target to live clients on the game thread (inside an input callback).
+    /// Returns false (and notifies the admin) when either is gone.
+    /// </summary>
+    private bool TryResolve(
+        int adminSlot,
+        int targetSlot,
+        out IGameClient admin,
+        out IGameClient target)
+    {
+        admin  = null!;
+        target = null!;
+
+        var liveAdmin = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) adminSlot);
+        if (liveAdmin is not { IsInGame: true })
+            return false;
+
+        var liveTarget = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) targetSlot);
+        if (liveTarget is not { IsInGame: true })
+        {
+            liveAdmin.Print(HudPrintChannel.Chat, " [AdminPanel] Target is no longer connected.");
+            return false;
+        }
+
+        admin  = liveAdmin;
+        target = liveTarget;
+        return true;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
