@@ -113,27 +113,46 @@ public sealed class AdminPanelPlugin : IModSharpModule
 
     private AdminPanelConfig LoadConfig(string dllPath)
     {
-        // Assets are deployed alongside the DLL; fall back to defaults on any failure.
-        try
+        // Prefer the standard ModSharp config location <sharp>/configs/adminpanel.json (like every
+        // other plugin); fall back to the legacy modules-root .assets/configs path for back-compat.
+        foreach (var configPath in ConfigCandidates(dllPath))
         {
-            var assetDir    = Path.Combine(Path.GetDirectoryName(dllPath)!, ".assets", "configs");
-            var configPath  = Path.Combine(assetDir, "adminpanel.json");
-
-            if (!File.Exists(configPath))
+            try
             {
-                _logger.LogWarning("[AdminPanel] Config not found at {Path}, using defaults", configPath);
-                return new AdminPanelConfig();
-            }
+                if (!File.Exists(configPath))
+                    continue;
 
-            using var stream = File.OpenRead(configPath);
-            var cfg = JsonSerializer.Deserialize<AdminPanelConfig>(stream) ?? new AdminPanelConfig();
-            _logger.LogInformation("[AdminPanel] Config loaded from {Path}", configPath);
-            return cfg;
+                using var stream = File.OpenRead(configPath);
+                var cfg = JsonSerializer.Deserialize<AdminPanelConfig>(stream) ?? new AdminPanelConfig();
+                _logger.LogInformation("[AdminPanel] Config loaded from {Path}", configPath);
+                return cfg;
+            }
+            catch (Exception e)
+            {
+                _logger.LogWarning(e, "[AdminPanel] Config load failed at {Path}, trying next candidate", configPath);
+            }
         }
-        catch (Exception e)
-        {
-            _logger.LogWarning(e, "[AdminPanel] Config load failed, using defaults");
-            return new AdminPanelConfig();
-        }
+
+        _logger.LogWarning("[AdminPanel] No config found (checked <sharp>/configs and legacy .assets); using defaults");
+        return new AdminPanelConfig();
+    }
+
+    /// <summary>
+    /// Candidate config paths, best first: <sharp>/configs/adminpanel.json (standard), then the
+    /// legacy <dllDir>/.assets/configs/adminpanel.json. The sharp root is the parent of the
+    /// "modules" dir the plugin DLL lives under.
+    /// </summary>
+    private static IEnumerable<string> ConfigCandidates(string dllPath)
+    {
+        var dllDir = Path.GetDirectoryName(dllPath)!;
+
+        var dir = new DirectoryInfo(dllDir);
+        while (dir is not null && !string.Equals(dir.Name, "modules", StringComparison.OrdinalIgnoreCase))
+            dir = dir.Parent;
+
+        if (dir?.Parent is { } sharpRoot)
+            yield return Path.Combine(sharpRoot.FullName, "configs", "adminpanel.json");
+
+        yield return Path.Combine(dllDir, ".assets", "configs", "adminpanel.json");
     }
 }
