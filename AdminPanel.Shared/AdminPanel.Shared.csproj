@@ -1,4 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Public API for external admin-action modules. Consumers reference this only. -->
-  <!-- Inherits TFM / LangVersion / ModSharp Shared packages from Directory.Build.props. -->
+  <!-- Pure System-only contract (no ModSharp/DB deps — see the conditional ItemGroup in
+       Directory.Build.props) so the NuGet package ships dependency-free. -->
+
+  <PropertyGroup>
+    <!-- NuGet package metadata -->
+    <PackageId>YappersHQ.AdminPanel.Shared</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>yappershq</Authors>
+    <Company>yappershq</Company>
+    <Description>Public contract (IAdminPanelShared) for registering admin-menu actions into the ModSharp/CS2 AdminPanel from external plugins. Compile-time only — the runtime DLL is provided by the AdminPanel plugin via /game/sharp/shared/.</Description>
+    <PackageTags>modsharp;cs2;adminpanel;admin</PackageTags>
+    <PackageProjectUrl>https://github.com/yappershq/AdminPanel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/yappershq/AdminPanel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- pack via `dotnet pack -c Release`; not on every build -->
+  </PropertyGroup>
 </Project>

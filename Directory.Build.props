@@ -32,7 +32,9 @@
     <None Remove="obj\**" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- Module project deps. NOT applied to *.Shared (the public contract is pure System — keeping it
+       dependency-free so the NuGet package YappersHQ.AdminPanel.Shared has zero dependencies). -->
+  <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('.Shared'))">
     <PackageReference Include="ModSharp.Sharp.Shared"                          Version="*" ExcludeAssets="runtime" />
     <PackageReference Include="ModSharp.Sharp.Modules.AdminCommands.Shared"    Version="*" ExcludeAssets="runtime" />
     <PackageReference Include="ModSharp.Sharp.Modules.AdminManager.Shared"     Version="*" ExcludeAssets="runtime" />
