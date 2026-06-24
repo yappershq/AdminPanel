@@ -1,104 +1,95 @@
-# AdminPanel
+<div align="center">
+  <h1><strong>AdminPanel</strong></h1>
+  <p>In-game, menu-driven admin tool for ModSharp / CS2 — pick a player, pick an action, done.</p>
+</div>
 
-In-game, menu-driven admin tool for ModSharp (CS2). Exposes the `!admin` command
-(gated by `@adminpanel/open`) with a root menu → player picker → action → duration →
-reason flow. Built-in player actions: Ban, Kick, Mute, Gag, Slay, Slap, Map Change.
+<p align="center">
+  <img src="https://img.shields.io/github/stars/yappershq/AdminPanel?style=flat&logo=github" alt="Stars">
+</p>
 
-## Projects
+---
 
-| Project | Purpose |
-|---|---|
-| `AdminPanel.Core` | The plugin (assembly `AdminPanel`). Hosts the menu, registry, DB, and AdminCommands/AdminManager/MenuManager integration. |
-| `AdminPanel.Shared` | Public contract (`IAdminPanelShared` + action descriptors). The only assembly a 3rd-party module needs to reference. |
+AdminPanel adds a single `!admin` command that opens a MenuManager-driven panel: **player picker → action → (duration →) reason → execute**. It covers punishment (ban/kick/mute/gag/silence), player ops (slay, slap, god, hp, respawn, noclip, freeze, speed, gravity, team, rename, money, strip, give) and server ops (map change). Punishments route through ModSharp's AdminCommands; ban/mute/gag durations and reason presets are pulled from a MySQL database that hot-reloads on a version bump. Other plugins can inject their own actions into the menu via the `IAdminPanelShared` contract.
 
-## Modular actions — extending the admin menu
+## 🚀 Install
 
-AdminPanel is a **modular host**: other plugins in the ecosystem can inject their own
-actions into the in-game admin menu instead of every action being hardcoded. There are two
-kinds of action, both registered through one Shared API:
+Copy the build output into your ModSharp install (`<sharp>` = your `sharp` directory):
 
-- **Player actions** — appear in the per-player action menu (after the built-in
-  ban/kick/slap/slay/gag/mute/map entries), with a target player.
-- **Global actions** — appear in the root admin menu, with no target player.
+| From | To |
+|------|----|
+| `.build/modules/AdminPanel.Core/` | `<sharp>/modules/AdminPanel.Core/` |
+| `.build/shared/AdminPanel.Shared/AdminPanel.Shared.dll` | `<sharp>/shared/` |
+| `AdminPanel.Core/.assets/configs/adminpanel.json` | `<sharp>/configs/adminpanel.json` |
+| `AdminPanel.Core/.assets/locales/adminpanel.json` | `<sharp>/locales/adminpanel.json` |
 
-The contract uses **player slots (`int`)**, not `IGameClient` — pointer-safe across the
-plugin boundary and matching the ecosystem event convention. AdminPanel resolves each slot
-back to a live `IGameClient` (validating `IsInGame`) on the game thread at invoke time, so
-your callback can never receive a stale handle.
+Set your MySQL connection in `<sharp>/configs/adminpanel.json`, then restart the server (or change map) to load.
 
-### How a 3rd-party plugin registers an action
+**Requires** the ModSharp **AdminCommands**, **AdminManager**, and **MenuManager** modules (permission gating + the punishment backend + the menu UI), plus a reachable **MySQL** database for reason presets.
 
-1. Reference `AdminPanel.Shared` (project reference or the shipped DLL).
-2. Resolve `IAdminPanelShared` in your plugin's **`OnAllModulesLoaded`** — AdminPanel
-   publishes it in its `PostInit`, and ModSharp guarantees all `PostInit`s finish before any
-   `OnAllModulesLoaded` runs. The AdminPanel menu is rebuilt on each `!admin` invocation, so
-   actions registered at OAM time are picked up automatically.
-3. Call `RegisterPlayerAction` / `RegisterGlobalAction`.
-4. Call `Unregister(id)` in your plugin's `Shutdown`.
+## ⌨️ Commands
 
-> **Permissions:** an action's `Permission` (e.g. `"@csrep/lookup"`) gates its visibility
-> using the same `IAdmin.HasPermission` check AdminPanel uses for built-in actions. A `null`
-> `Permission` makes the action visible to anyone who can open the panel. Register any custom
-> permission flags via **your own** plugin's `MountAdminManifest` — AdminManager resolves
-> permissions across every plugin's manifest.
+| Command | Description | Permission |
+|---------|-------------|------------|
+| `!admin` | Open the admin panel (command name configurable via `Command`) | `adminpanel:open` |
 
-### Example — a `CsRepGuard` "csrep lookup" player action
+Every action inside the panel is independently gated against the acting admin and only renders if they hold the matching flag:
+
+| Category | Actions | Permissions |
+|----------|---------|-------------|
+| Punish | Ban, Kick, Mute, Gag, Silence | `admin:ban`, `admin:kick`, `admin:mute`, `admin:gag`, `admin:silence` |
+| Player | Slay, Slap, God Mode, Set HP, Respawn, Noclip, Freeze/Unfreeze, Speed, Gravity, Team, Rename, Set Money, Strip Weapons, Give Item | `admin:slay`, `admin:slap`, `admin:god`, `admin:hp`, `admin:respawn`, `admin:noclip`, `admin:freeze`, `admin:speed`, `admin:gravity`, `admin:team`, `admin:rename`, `admin:money`, `admin:strip`, `admin:give` |
+| Teleport | Bring, Goto | `admin:bring`, `admin:goto` |
+| Server | Map Change | `admin:map` |
+
+Ban/mute/gag/silence offer preset durations (1h / 1d / 7d / 30d / Permanent) plus a **Custom…** entry that captures a free-text value from chat. Reason menus likewise offer DB presets plus a **Custom reason…** entry.
+
+## ⚙️ Configuration
+
+`<sharp>/configs/adminpanel.json` (falls back to defaults if absent):
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `Database` | — | MySQL connection: `Host`, `Port`, `Database`, `User`, `Password`, `MaxPoolSize` |
+| `PollIntervalSeconds` | `30` | How often (min 15s) to poll the DB version for changed reason presets |
+| `SlapDamage` | `10` | Damage dealt by the Slap action |
+| `Command` | `admin` | Chat command that opens the panel (registered as `!<value>`) |
+| `ServerTag` | `all` | Scope tag used when loading reason presets for this server |
+
+## 🔧 How it works
+
+On load, AdminPanel connects to MySQL, ensures its schema, and seeds default reason presets if the table is empty. A background timer polls `adminpanel_meta.reasons_version`; when it bumps, the preset cache is reloaded atomically — so a website or other tool can edit reasons in the DB and have them appear in-game without a restart. The `!admin` flow builds menus on every invocation, checking each action's permission against the acting admin via AdminManager. Punishments are applied through the AdminCommands service; player/teleport ops act on the pawn/controller directly (e.g. `DispatchTraceAttack` for slap, `Teleport` for bring/goto), and free-text input (custom duration, reason, name, item, etc.) is captured by intercepting the admin's next chat line.
+
+## 🧩 Public API
+
+AdminPanel publishes `IAdminPanelShared` so other plugins can add their own actions to the menu (also available as the dependency-free NuGet package `YappersHQ.AdminPanel.Shared`). Resolve it in your `OnAllModulesLoaded`:
 
 ```csharp
-using AdminPanel.Shared;
-using Sharp.Shared;
-using Sharp.Shared.Managers;
+var panel = sharpModuleManager
+    .GetOptionalSharpModuleInterface<IAdminPanelShared>(IAdminPanelShared.Identity)?.Instance;
 
-public sealed class CsRepGuardPlugin : IModSharpModule
+panel?.RegisterPlayerAction(new AdminPanelPlayerAction
 {
-    private ISharpModuleManager _modules = /* from ISharedSystem.GetSharpModuleManager() */;
-    private IAdminPanelShared?  _adminPanel;
-
-    private const string ActionId = "csrepguard.lookup";
-
-    public void OnAllModulesLoaded()
-    {
-        // AdminPanel published IAdminPanelShared in its PostInit; safe to resolve now.
-        _adminPanel = _modules
-            .GetOptionalSharpModuleInterface<IAdminPanelShared>(IAdminPanelShared.Identity)
-            ?.Instance;
-
-        if (_adminPanel is null)
-            return; // AdminPanel not installed — degrade gracefully.
-
-        _adminPanel.RegisterPlayerAction(new AdminPanelPlayerAction
-        {
-            Id         = ActionId,
-            Label      = "CS Rep Lookup",
-            Permission = "@csrep/lookup",   // gated; register this flag in your own manifest
-            SortOrder  = 100,
-            OnSelected = (adminSlot, targetSlot) =>
-            {
-                // Runs on the game thread. Both slots are validated in-game by AdminPanel.
-                // Resolve targetSlot -> your data and print to the admin, open a sub-menu, etc.
-                LookupAndReport(adminSlot, targetSlot);
-            },
-        });
-
-        // A dynamic-label global action example:
-        _adminPanel.RegisterGlobalAction(new AdminPanelGlobalAction
-        {
-            Id         = "csrepguard.toggle",
-            Label      = "Toggle CSRep enforcement",
-            Permission = "@csrep/admin",
-            SortOrder  = 200,
-            OnSelected = adminSlot => ToggleEnforcement(adminSlot),
-        });
-    }
-
-    public void Shutdown()
-    {
-        _adminPanel?.Unregister(ActionId);
-        _adminPanel?.Unregister("csrepguard.toggle");
-    }
-}
+    Id         = "myplugin.greet",
+    Label      = "Greet player",
+    Category   = "Fun",          // groups under a built-in or new category
+    Permission = "@myplugin/greet",
+    OnSelected = (adminSlot, targetSlot) => { /* runs on the game thread */ },
+});
 ```
 
-`AdminPanelPlayerAction` also supports a dynamic label via
-`LabelFactory = adminSlot => ...` (takes precedence over `Label`), useful for showing live
-state (e.g. an on/off toggle) in the menu entry text.
+`RegisterGlobalAction` adds a target-less action to the root menu, `Unregister(id)` removes one, and `RequestInput(...)` prompts the admin for typed integer/string input via chat capture (with range checks, timeout, and cancel keywords).
+
+## 📦 Build
+
+```bash
+dotnet build -c Release
+```
+
+Outputs the module to `.build/modules/AdminPanel.Core/AdminPanel.dll` (with its runtime dependencies) and the public contract to `.build/shared/AdminPanel.Shared/AdminPanel.Shared.dll`.
+
+---
+
+<div align="center">
+  <p>Made with ❤️ by <a href="https://github.com/yappershq">yappershq</a></p>
+  <p>⭐ Star this repo if you find it useful!</p>
+</div>
