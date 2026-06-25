@@ -227,8 +227,6 @@ internal sealed class AdminCommandModule
         {
             if (client.IsFakeClient || client.IsHltv)
                 continue;
-            if (client.Equals(admin))
-                continue;
 
             var captured = client;
             var name     = captured.Name ?? captured.SteamId.ToString();
