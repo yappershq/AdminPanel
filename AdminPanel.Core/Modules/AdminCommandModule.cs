@@ -225,7 +225,8 @@ internal sealed class AdminCommandModule
 
         foreach (var client in players)
         {
-            if (client.IsFakeClient || client.IsHltv)
+            // Only fully in-game players — skip bots/HLTV and anyone still connecting/joining.
+            if (client.IsFakeClient || client.IsHltv || !client.IsInGame)
                 continue;
 
             var captured = client;
@@ -275,25 +276,25 @@ internal sealed class AdminCommandModule
             ctrl.Next(c => BuildDurationMenu(c, target, targetName, "silence", "Silence")));
 
         // ── Player ──
-        Add(CatPlayer, "Slay",          PermSlay,    0, ctrl => { ctrl.Exit(); ExecuteSlay(admin, target, targetName); });
-        Add(CatPlayer, "Slap",          PermSlap,    1, ctrl => { ctrl.Exit(); ExecuteSlap(admin, target, targetName); });
-        Add(CatPlayer, "God Mode",      PermGod,     2, ctrl => { ctrl.Exit(); ExecuteGod(admin, target, targetName); });
+        Add(CatPlayer, "Slay",          PermSlay,    0, ctrl => { ExecuteSlay(admin, target, targetName); });
+        Add(CatPlayer, "Slap",          PermSlap,    1, ctrl => { ExecuteSlap(admin, target, targetName); });
+        Add(CatPlayer, "God Mode",      PermGod,     2, ctrl => { ExecuteGod(admin, target, targetName); });
         Add(CatPlayer, "Set HP",        PermHp,      3, ctrl => { ctrl.Exit(); RequestHealth(admin, target, targetName); });
-        Add(CatPlayer, "Respawn",       PermRespawn, 4, ctrl => { ctrl.Exit(); ExecuteRespawn(admin, target, targetName); });
-        Add(CatPlayer, "Noclip",        PermNoclip,  5, ctrl => { ctrl.Exit(); ExecuteNoclip(admin, target, targetName); });
-        Add(CatPlayer, "Freeze",        PermFreeze,  6, ctrl => { ctrl.Exit(); ExecuteFreeze(admin, target, targetName, true); });
-        Add(CatPlayer, "Unfreeze",      PermFreeze,  7, ctrl => { ctrl.Exit(); ExecuteFreeze(admin, target, targetName, false); });
+        Add(CatPlayer, "Respawn",       PermRespawn, 4, ctrl => { ExecuteRespawn(admin, target, targetName); });
+        Add(CatPlayer, "Noclip",        PermNoclip,  5, ctrl => { ExecuteNoclip(admin, target, targetName); });
+        Add(CatPlayer, "Freeze",        PermFreeze,  6, ctrl => { ExecuteFreeze(admin, target, targetName, true); });
+        Add(CatPlayer, "Unfreeze",      PermFreeze,  7, ctrl => { ExecuteFreeze(admin, target, targetName, false); });
         Add(CatPlayer, "Speed",         PermSpeed,   8, ctrl => { ctrl.Exit(); RequestSpeed(admin, target, targetName); });
         Add(CatPlayer, "Gravity",       PermGravity, 9, ctrl => { ctrl.Exit(); RequestGravity(admin, target, targetName); });
         Add(CatPlayer, "Team",          PermTeam,   10, ctrl => ctrl.Next(c => BuildTeamMenu(c, target, targetName)));
         Add(CatPlayer, "Rename",        PermRename, 11, ctrl => { ctrl.Exit(); RequestRename(admin, target, targetName); });
         Add(CatPlayer, "Set Money",     PermMoney,  12, ctrl => { ctrl.Exit(); RequestMoney(admin, target, targetName); });
-        Add(CatPlayer, "Strip Weapons", PermStrip,  13, ctrl => { ctrl.Exit(); ExecuteStrip(admin, target, targetName); });
+        Add(CatPlayer, "Strip Weapons", PermStrip,  13, ctrl => { ExecuteStrip(admin, target, targetName); });
         Add(CatPlayer, "Give Item",     PermGive,   14, ctrl => { ctrl.Exit(); RequestGive(admin, target, targetName); });
 
         // ── Teleport ──
-        Add(CatTeleport, "Bring", PermBring, 0, ctrl => { ctrl.Exit(); ExecuteBring(admin, target, targetName); });
-        Add(CatTeleport, "Goto",  PermGoto,  1, ctrl => { ctrl.Exit(); ExecuteGoto(admin, target, targetName); });
+        Add(CatTeleport, "Bring", PermBring, 0, ctrl => { ExecuteBring(admin, target, targetName); });
+        Add(CatTeleport, "Goto",  PermGoto,  1, ctrl => { ExecuteGoto(admin, target, targetName); });
 
         // ── Server ──
         Add(CatServer, "Map Change", PermMap, 0, ctrl => ctrl.Next(c => BuildMapMenu(c)));
