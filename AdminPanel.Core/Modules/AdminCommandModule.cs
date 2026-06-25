@@ -220,6 +220,15 @@ internal sealed class AdminCommandModule
     {
         var builder = Menu.Create().Title("Admin Panel — Select Player");
 
+        // Type-search: lets the admin target by partial name or @token (@me, @aim, @all, @ct, @t, @alive, @dead…).
+        var capturedAdminForInput = admin;
+        var adminSlotForInput     = (int) admin.Slot.AsPrimitive();
+        builder.Item("🔎 Type name / @target…", ctrl =>
+        {
+            ctrl.Exit();
+            RequestTargetInput(capturedAdminForInput, adminSlotForInput);
+        });
+
         var players = _bridge.ClientManager.GetGameClients();
         bool any = false;
 
@@ -240,6 +249,141 @@ internal sealed class AdminCommandModule
 
         if (!any)
             builder.Item("(no players online)", _ => { });
+
+        builder.BackItem("« Back");
+        builder.ExitItem("Exit");
+        return builder.Build();
+    }
+
+    /// <summary>
+    /// Prompts the admin to type a name or @token, resolves via TargetingManager, then
+    /// opens the action menu (single match) or a group-action menu (multi-match).
+    /// </summary>
+    private void RequestTargetInput(IGameClient admin, int adminSlot)
+    {
+        _input.RequestInput(
+            adminSlot,
+            "Type a player name or target (@me, @aim, @all, @ct, @t, @alive, @dead):",
+            AdminInputKind.String,
+            (slot, value) =>
+            {
+                var typed     = (string) value;
+                var liveAdmin = _bridge.ClientManager.GetGameClient((PlayerSlot) (byte) slot);
+                if (liveAdmin is not { IsInGame: true })
+                    return;
+
+                var matched = _bridge.TargetingManager
+                    ?.GetByTarget(liveAdmin, typed)
+                    ?.Where(c => c is { IsInGame: true } && !c.IsFakeClient && !c.IsHltv)
+                    .ToList() ?? [];
+
+                if (matched.Count == 0)
+                {
+                    liveAdmin.Print(HudPrintChannel.Chat,
+                        $" [AdminPanel] No player matched '{typed}'.");
+                    // Re-invoke so the admin can try again.
+                    RequestTargetInput(liveAdmin, slot);
+                    return;
+                }
+
+                if (matched.Count == 1)
+                {
+                    var t    = matched[0];
+                    var name = t.Name ?? t.SteamId.ToString();
+                    _bridge.MenuManager?.DisplayMenu(liveAdmin, BuildActionMenu(liveAdmin, t, name));
+                    return;
+                }
+
+                _bridge.MenuManager?.DisplayMenu(liveAdmin, BuildGroupActionMenu(liveAdmin, matched, typed));
+            },
+            timeoutSeconds: 30);
+    }
+
+    /// <summary>
+    /// Group action menu — instant, no-extra-input operations applied to every target in the list.
+    /// Excludes actions that require per-player input or per-target submenus.
+    /// </summary>
+    private Menu BuildGroupActionMenu(IGameClient admin, IReadOnlyList<IGameClient> targets, string label)
+    {
+        var adminObj = _bridge.AdminManager?.GetAdmin(admin.SteamId);
+
+        bool HasPerm(string perm) =>
+            _bridge.AdminManager is null || (adminObj?.HasPermission(perm) ?? false);
+
+        var builder = Menu.Create().Title($"Group: {label} ({targets.Count})");
+
+        // Each handler loops over every target. No ctrl.Exit() — leave the menu open.
+        if (HasPerm(PermSlay))
+            builder.Item("Slay All", ctrl =>
+            {
+                foreach (var t in targets)
+                    ExecuteSlay(admin, t, t.Name ?? t.SteamId.ToString());
+            });
+        else
+            builder.DisabledItem("Slay All (no permission)");
+
+        if (HasPerm(PermSlap))
+            builder.Item("Slap All", ctrl =>
+            {
+                foreach (var t in targets)
+                    ExecuteSlap(admin, t, t.Name ?? t.SteamId.ToString());
+            });
+        else
+            builder.DisabledItem("Slap All (no permission)");
+
+        if (HasPerm(PermFreeze))
+            builder.Item("Freeze All", ctrl =>
+            {
+                foreach (var t in targets)
+                    ExecuteFreeze(admin, t, t.Name ?? t.SteamId.ToString(), true);
+            });
+        else
+            builder.DisabledItem("Freeze All (no permission)");
+
+        if (HasPerm(PermFreeze))
+            builder.Item("Unfreeze All", ctrl =>
+            {
+                foreach (var t in targets)
+                    ExecuteFreeze(admin, t, t.Name ?? t.SteamId.ToString(), false);
+            });
+        else
+            builder.DisabledItem("Unfreeze All (no permission)");
+
+        if (HasPerm(PermNoclip))
+            builder.Item("Noclip All", ctrl =>
+            {
+                foreach (var t in targets)
+                    ExecuteNoclip(admin, t, t.Name ?? t.SteamId.ToString());
+            });
+        else
+            builder.DisabledItem("Noclip All (no permission)");
+
+        if (HasPerm(PermGod))
+            builder.Item("God Mode All", ctrl =>
+            {
+                foreach (var t in targets)
+                    ExecuteGod(admin, t, t.Name ?? t.SteamId.ToString());
+            });
+        else
+            builder.DisabledItem("God Mode All (no permission)");
+
+        if (HasPerm(PermRespawn))
+            builder.Item("Respawn All", ctrl =>
+            {
+                foreach (var t in targets)
+                    ExecuteRespawn(admin, t, t.Name ?? t.SteamId.ToString());
+            });
+        else
+            builder.DisabledItem("Respawn All (no permission)");
+
+        if (HasPerm(PermStrip))
+            builder.Item("Strip Weapons All", ctrl =>
+            {
+                foreach (var t in targets)
+                    ExecuteStrip(admin, t, t.Name ?? t.SteamId.ToString());
+            });
+        else
+            builder.DisabledItem("Strip Weapons All (no permission)");
 
         builder.BackItem("« Back");
         builder.ExitItem("Exit");

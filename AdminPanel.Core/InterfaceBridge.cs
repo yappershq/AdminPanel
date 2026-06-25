@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Sharp.Modules.AdminCommands.Shared;
 using Sharp.Modules.AdminManager.Shared;
 using Sharp.Modules.MenuManager.Shared;
+using Sharp.Modules.TargetingManager.Shared;
 using Sharp.Shared;
 using Sharp.Shared.Managers;
 
@@ -20,9 +21,10 @@ internal sealed class InterfaceBridge
     internal ILoggerFactory       LoggerFactory      { get; }
 
     // Resolved in OnAllModulesLoaded.
-    internal IAdminService? AdminService { get; private set; }
-    internal IAdminManager? AdminManager { get; private set; }
-    internal IMenuManager?  MenuManager  { get; private set; }
+    internal IAdminService?     AdminService     { get; private set; }
+    internal IAdminManager?     AdminManager     { get; private set; }
+    internal IMenuManager?      MenuManager      { get; private set; }
+    internal ITargetingManager? TargetingManager { get; private set; }
 
     public InterfaceBridge(IModSharpModule module, ISharedSystem sharedSystem)
     {
@@ -41,5 +43,7 @@ internal sealed class InterfaceBridge
             .GetOptionalSharpModuleInterface<IAdminManager>(IAdminManager.Identity)?.Instance;
         MenuManager  = SharpModuleManager
             .GetOptionalSharpModuleInterface<IMenuManager>(IMenuManager.Identity)?.Instance;
+        TargetingManager = SharpModuleManager
+            .GetOptionalSharpModuleInterface<ITargetingManager>(ITargetingManager.Identity)?.Instance;
     }
 }
