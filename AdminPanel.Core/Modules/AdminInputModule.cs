@@ -122,12 +122,14 @@ internal sealed class AdminInputModule : IClientListener
 
         _pending[adminSlot] = new PendingInput
         {
-            Kind         = kind,
-            Min          = min,
-            Max          = max,
-            OnResult     = onResult,
-            OnCancel     = onCancel,
-            TimeoutTimer = timer,
+            Kind           = kind,
+            Min            = min,
+            Max            = max,
+            OnResult       = onResult,
+            OnCancel       = onCancel,
+            Prompt         = prompt,
+            TimeoutSeconds = seconds,
+            TimeoutTimer   = timer,
         };
 
         admin.Print(HudPrintChannel.Chat, $" [AdminPanel] {prompt}");
@@ -193,19 +195,19 @@ internal sealed class AdminInputModule : IClientListener
             {
                 if (!long.TryParse(text, out var value))
                 {
-                    DispatchCancel(slot, pending, $" [AdminPanel] '{text}' is not a whole number. Cancelled.");
+                    RePrompt(slot, client, pending, $" [AdminPanel] '{text}' is not a whole number.");
                     return ECommandAction.Stopped;
                 }
 
                 if (pending.Min is { } lo && value < lo)
                 {
-                    DispatchCancel(slot, pending, $" [AdminPanel] Value must be at least {lo}. Cancelled.");
+                    RePrompt(slot, client, pending, $" [AdminPanel] Value must be at least {lo}.");
                     return ECommandAction.Stopped;
                 }
 
                 if (pending.Max is { } hi && value > hi)
                 {
-                    DispatchCancel(slot, pending, $" [AdminPanel] Value must be at most {hi}. Cancelled.");
+                    RePrompt(slot, client, pending, $" [AdminPanel] Value must be at most {hi}.");
                     return ECommandAction.Stopped;
                 }
 
@@ -217,7 +219,7 @@ internal sealed class AdminInputModule : IClientListener
             {
                 if (text.Length == 0)
                 {
-                    DispatchCancel(slot, pending, " [AdminPanel] Empty input. Cancelled.");
+                    RePrompt(slot, client, pending, " [AdminPanel] Empty input.");
                     return ECommandAction.Stopped;
                 }
 
@@ -279,6 +281,26 @@ internal sealed class AdminInputModule : IClientListener
         });
     }
 
+    /// <summary>
+    /// Invalid (but not 'cancel') input — keep the request alive and let the admin retry instead of
+    /// aborting the whole action. Re-arms the pending entry with a fresh timeout and re-shows the prompt.
+    /// Called on the game thread from <see cref="OnClientSayCommand"/>.
+    /// </summary>
+    private void RePrompt(int adminSlot, IGameClient admin, PendingInput pending, string error)
+    {
+        var timer = _bridge.ModSharp.PushTimer(
+            () => OnTimeout(adminSlot), pending.TimeoutSeconds, GameTimerFlags.StopOnMapEnd);
+        pending.TimeoutTimer = timer;
+        _pending[adminSlot]  = pending;
+
+        if (admin is { IsInGame: true })
+        {
+            admin.Print(HudPrintChannel.Chat, error);
+            admin.Print(HudPrintChannel.Chat, $" [AdminPanel] {pending.Prompt}");
+            admin.Print(HudPrintChannel.Chat, " [AdminPanel] Try again, or 'cancel' to abort.");
+        }
+    }
+
     private void OnTimeout(int adminSlot)
     {
         if (adminSlot is < 0 or >= 64)
@@ -298,11 +320,13 @@ internal sealed class AdminInputModule : IClientListener
 
     private sealed class PendingInput
     {
-        public required AdminInputKind      Kind         { get; init; }
-        public required long?               Min          { get; init; }
-        public required long?               Max          { get; init; }
-        public required Action<int, object> OnResult     { get; init; }
-        public required Action<int>?        OnCancel     { get; init; }
-        public required Guid                TimeoutTimer { get; init; }
+        public required AdminInputKind      Kind           { get; init; }
+        public required long?               Min            { get; init; }
+        public required long?               Max            { get; init; }
+        public required Action<int, object> OnResult       { get; init; }
+        public required Action<int>?        OnCancel       { get; init; }
+        public required string              Prompt         { get; init; }
+        public required int                 TimeoutSeconds { get; init; }
+        public          Guid                TimeoutTimer   { get; set; }
     }
 }
