@@ -165,6 +165,7 @@ internal sealed class AdminCommandModule
         bool HasPerm(string? perm) =>
             perm is null || _bridge.AdminManager is null || (adminObj?.HasPermission(perm) ?? false);
 
+        var adminSlot = (int) admin.Slot.AsPrimitive();
         var buckets = new Dictionary<string, List<MenuEntry>>(StringComparer.Ordinal);
         foreach (var action in _actions.GetGlobalActions())
         {
@@ -174,8 +175,16 @@ internal sealed class AdminCommandModule
 
             AddEntry(buckets, category, action.SortOrder, captured.Label, allowed, ctrl =>
             {
-                ctrl.Exit();
-                InvokeGlobalAction(capturedAdmin, captured);
+                // Nested sub-menu: render inside our own stack so Back works and the menu
+                // isn't stomped by the selection-close (the failure mode of a module opening
+                // its own MenuManager menu from OnSelected).
+                if (captured.SubMenu is { } sub)
+                    ctrl.Next(_ => BuildExternalSubMenu(captured.Label, sub.Invoke(adminSlot), adminSlot));
+                else
+                {
+                    ctrl.Exit();
+                    InvokeGlobalAction(capturedAdmin, captured);
+                }
             });
         }
 
@@ -205,6 +214,33 @@ internal sealed class AdminCommandModule
                                      .ThenBy(e => e.Label, StringComparer.OrdinalIgnoreCase))
         {
             AddActionItem(builder, entry.Label, string.Empty, entry.Allowed, entry.Action);
+        }
+
+        builder.BackItem("« Back");
+        builder.ExitItem("Exit");
+        return builder.Build();
+    }
+
+    /// <summary>
+    /// Renders an external module's <see cref="AdminPanelMenuItem"/> descriptor tree as a real
+    /// menu inside AdminPanel's stack. Recurses for nested levels so Back returns to the parent.
+    /// </summary>
+    private Menu BuildExternalSubMenu(string title, IReadOnlyList<AdminPanelMenuItem> items, int adminSlot)
+    {
+        var builder = Menu.Create().Title(title);
+
+        foreach (var item in items)
+        {
+            var captured = item;
+            if (captured.SubMenu is { } sub)
+                builder.Item(captured.Label, ctrl =>
+                    ctrl.Next(_ => BuildExternalSubMenu(captured.Label, sub.Invoke(adminSlot), adminSlot)));
+            else
+                builder.Item(captured.Label, ctrl =>
+                {
+                    ctrl.Exit();
+                    captured.OnSelected?.Invoke(adminSlot);
+                });
         }
 
         builder.BackItem("« Back");

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace AdminPanel.Shared;
 
@@ -164,8 +165,42 @@ public sealed class AdminPanelGlobalAction
     public string? Category { get; init; }
 
     /// <summary>
-    /// Invoked on the game thread when the action is selected.
+    /// Invoked on the game thread when the action is selected. Ignored when
+    /// <see cref="SubMenu"/> is set. Optional: an action may be submenu-only.
     /// Argument: acting admin slot (validated in-game by AdminPanel before this fires).
     /// </summary>
-    public required Action<int> OnSelected { get; init; }
+    public Action<int>? OnSelected { get; init; }
+
+    /// <summary>
+    /// Optional nested sub-menu. When set, selecting this action opens another menu level
+    /// <b>rendered inside AdminPanel's own menu stack</b> (so Back/Exit work and the menu is
+    /// not stomped by the selection-close race that hits a module opening its own MenuManager
+    /// menu). Resolved with the acting admin slot each time the row is opened. Takes precedence
+    /// over <see cref="OnSelected"/>.
+    /// </summary>
+    public Func<int, IReadOnlyList<AdminPanelMenuItem>>? SubMenu { get; init; }
+}
+
+/// <summary>
+/// Pure-data descriptor for one row of an external action's nested sub-menu. AdminPanel
+/// translates these into its own menu so navigation stays consistent. Kept dependency-free
+/// (System only) to preserve the pure <see cref="IAdminPanelShared"/> contract — external
+/// modules describe the menu as data instead of handing over a MenuManager menu.
+/// </summary>
+public sealed class AdminPanelMenuItem
+{
+    /// <summary>Row label.</summary>
+    public required string Label { get; init; }
+
+    /// <summary>
+    /// Leaf action invoked on the game thread with the acting admin slot. The menu is closed
+    /// before this fires (matches built-in action behaviour). Ignored when <see cref="SubMenu"/> is set.
+    /// </summary>
+    public Action<int>? OnSelected { get; init; }
+
+    /// <summary>
+    /// Nested level: when set, selecting this row opens another sub-menu (with a working Back).
+    /// Resolved with the acting admin slot when opened. Takes precedence over <see cref="OnSelected"/>.
+    /// </summary>
+    public Func<int, IReadOnlyList<AdminPanelMenuItem>>? SubMenu { get; init; }
 }
