@@ -41,7 +41,10 @@ internal sealed class AdminActionRegistry : IAdminPanelShared
     {
         ArgumentNullException.ThrowIfNull(action);
         ArgumentException.ThrowIfNullOrEmpty(action.Id);
-        ArgumentNullException.ThrowIfNull(action.OnSelected);
+        // A global action is valid with EITHER a leaf handler (OnSelected) OR a nested SubMenu
+        // (1.2.0). Submenu-only actions leave OnSelected null — don't reject them.
+        if (action.OnSelected is null && action.SubMenu is null)
+            throw new ArgumentException("A global action must set OnSelected or SubMenu.", nameof(action));
 
         lock (_gate)
             _globals[action.Id] = action;
