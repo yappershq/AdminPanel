@@ -6,7 +6,7 @@
   <PropertyGroup>
     <!-- NuGet package metadata -->
     <PackageId>YappersHQ.AdminPanel.Shared</PackageId>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Authors>yappershq</Authors>
     <Company>yappershq</Company>
     <Description>Public contract (IAdminPanelShared) for registering admin-menu actions into the ModSharp/CS2 AdminPanel from external plugins. Compile-time only — the runtime DLL is provided by the AdminPanel plugin via /game/sharp/shared/.</Description>
